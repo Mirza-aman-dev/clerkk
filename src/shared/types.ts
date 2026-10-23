@@ -17,6 +17,7 @@ export interface Product {
   category_id: number | null
   category_name: string | null
   image: string | null
+  barcode_image: string | null
   description: string | null
   created_at: string
   updated_at: string

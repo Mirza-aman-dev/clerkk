@@ -91,6 +91,11 @@ const MIGRATIONS: string[] = [
   );
 
   CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+  `,
+  // v2 — add barcode_image column to products
+  `
+  ALTER TABLE products ADD COLUMN barcode_image TEXT;
+  CREATE INDEX IF NOT EXISTS idx_products_barcode_image ON products(barcode_image);
   `
 ]
 

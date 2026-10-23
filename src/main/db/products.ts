@@ -304,7 +304,7 @@ export async function generateBarcodeImage(productName: string, priceCents?: num
     includetext: true,
     textxalign: 'center',
     textfont: 'Helvetica',
-    fontsize: 12
+    textsize: 12
   })
 
   // Save barcode image

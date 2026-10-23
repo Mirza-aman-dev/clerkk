@@ -1,6 +1,6 @@
 {
   "name": "clerkk",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Premium desktop Inventory Management + Barcode POS",
   "main": "./out/main/index.js",
   "author": "Clerkk",
@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
+    "@types/bwip-js": "^3.2.3",
     "@types/node": "^22.7.5",
     "@types/pdfmake": "^0.3.3",
     "@types/react": "^18.3.11",
