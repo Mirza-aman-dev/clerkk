@@ -303,7 +303,7 @@ export async function generateBarcodeImage(productName: string, priceCents?: num
     height: 10,
     includetext: true,
     textxalign: 'center',
-    textfont: 'Helvetica',
+    textfont: 'DejaVuSans',
     textsize: 12
   })
 
