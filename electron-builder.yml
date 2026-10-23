@@ -1,0 +1,104 @@
+appId: com.clerkk.pos
+productName: Clerkk
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - resources/**/*
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.ts"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+  - "!{.eslintrc.js,.prettierrc,README.md}"
+asar: true
+asarUnpack:
+  - "**/*.node"
+extraResources:
+  # PDF generation dependency chain
+  - from: node_modules/call-bind-apply-helpers
+    to: node_modules/call-bind-apply-helpers
+    filter: ["**/*"]
+  - from: node_modules/dunder-proto
+    to: node_modules/dunder-proto
+    filter: ["**/*"]
+  - from: node_modules/get-proto
+    to: node_modules/get-proto
+    filter: ["**/*"]
+  - from: node_modules/get-intrinsic
+    to: node_modules/get-intrinsic
+    filter: ["**/*"]
+  - from: node_modules/call-bound
+    to: node_modules/call-bound
+    filter: ["**/*"]
+  - from: node_modules/is-arguments
+    to: node_modules/is-arguments
+    filter: ["**/*"]
+  - from: node_modules/deep-equal
+    to: node_modules/deep-equal
+    filter: ["**/*"]
+  # Transitive dependencies
+  - from: node_modules/function-bind
+    to: node_modules/function-bind
+    filter: ["**/*"]
+  - from: node_modules/es-errors
+    to: node_modules/es-errors
+    filter: ["**/*"]
+  - from: node_modules/gopd
+    to: node_modules/gopd
+    filter: ["**/*"]
+  - from: node_modules/es-object-atoms
+    to: node_modules/es-object-atoms
+    filter: ["**/*"]
+  - from: node_modules/es-define-property
+    to: node_modules/es-define-property
+    filter: ["**/*"]
+  - from: node_modules/has-symbols
+    to: node_modules/has-symbols
+    filter: ["**/*"]
+  - from: node_modules/hasown
+    to: node_modules/hasown
+    filter: ["**/*"]
+  - from: node_modules/math-intrinsics
+    to: node_modules/math-intrinsics
+    filter: ["**/*"]
+  - from: node_modules/has-tostringtag
+    to: node_modules/has-tostringtag
+    filter: ["**/*"]
+  - from: node_modules/is-date-object
+    to: node_modules/is-date-object
+    filter: ["**/*"]
+  - from: node_modules/is-regex
+    to: node_modules/is-regex
+    filter: ["**/*"]
+  - from: node_modules/object-is
+    to: node_modules/object-is
+    filter: ["**/*"]
+  - from: node_modules/object-keys
+    to: node_modules/object-keys
+    filter: ["**/*"]
+  - from: node_modules/regexp.prototype.flags
+    to: node_modules/regexp.prototype.flags
+    filter: ["**/*"]
+  - from: node_modules/call-bind
+    to: node_modules/call-bind
+    filter: ["**/*"]
+npmRebuild: true
+mac:
+  target:
+    - dmg
+  category: public.app-category.business
+  icon: build/icon.icns
+win:
+  target:
+    - nsis
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+linux:
+  target:
+    - AppImage
+  icon: build/icon.png
+  category: Office

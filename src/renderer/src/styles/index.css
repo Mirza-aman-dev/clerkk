@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: 244 246 251;
+  --surface: 255 255 255;
+  --surface-2: 247 249 253;
+  --surface-3: 237 241 248;
+  --border: 226 231 240;
+  --text: 15 23 42;
+  --muted: 100 116 139;
+  --faint: 148 163 184;
+  --brand: 79 70 229;
+  --brand-fg: 255 255 255;
+  --success: 22 163 74;
+  --warning: 217 119 6;
+  --danger: 220 38 38;
+}
+
+.dark {
+  color-scheme: dark;
+  --bg: 9 11 19;
+  --surface: 16 19 32;
+  --surface-2: 21 25 42;
+  --surface-3: 29 34 56;
+  --border: 38 44 68;
+  --text: 232 236 248;
+  --muted: 148 158 184;
+  --faint: 96 105 132;
+  --brand: 99 102 241;
+  --brand-fg: 255 255 255;
+  --success: 34 197 94;
+  --warning: 245 158 11;
+  --danger: 239 68 68;
+}
+
+@layer base {
+  * {
+    border-color: rgb(var(--border));
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: rgb(var(--bg));
+    color: rgb(var(--text));
+    font-family: theme('fontFamily.sans');
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  select {
+    user-select: text;
+  }
+
+  ::selection {
+    background: rgb(var(--brand) / 0.25);
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand) / 0.7);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: rgb(var(--border));
+    border-radius: 9999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--faint));
+  }
+
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: rgb(var(--surface-3));
+    border-radius: 0.5rem;
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(var(--surface) / 0.6), transparent);
+    animation: shimmer 1.6s infinite;
+  }
+}
+
+/* Camera preview */
+#clerkk-scanner video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: 0.75rem;
+}
+
+/* Recharts polish */
+.recharts-cartesian-grid line {
+  stroke: rgb(var(--border));
+  stroke-opacity: 0.6;
+}
+.recharts-text {
+  fill: rgb(var(--muted));
+  font-size: 11px;
+}
