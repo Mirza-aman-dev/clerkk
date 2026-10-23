@@ -193,7 +193,7 @@ export interface UpdaterStatus {
   checking: boolean
   updateAvailable: boolean
   updateDownloaded: boolean
-  updateInfo: UpdateInfo | null
+  updateInfo: UpdateInfo | null | undefined
 }
 
 export interface DownloadProgress {

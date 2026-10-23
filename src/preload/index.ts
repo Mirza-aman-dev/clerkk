@@ -68,12 +68,14 @@ const api: ClerkkApi = {
     getStatus: () => ipcRenderer.invoke('updater:get-status'),
     openReleaseNotes: () => ipcRenderer.invoke('updater:open-release-notes'),
     onStatus: (callback: (status: { status: string; data?: unknown }) => void) => {
-      ipcRenderer.on('updater:status', (_e, data) => callback(data))
-      return () => ipcRenderer.off('updater:status', callback)
+      const handler = (_e: Electron.IpcRendererEvent, data: { status: string; data?: unknown }) => callback(data)
+      ipcRenderer.on('updater:status', handler)
+      return () => ipcRenderer.off('updater:status', handler)
     },
     onDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number; bytesPerSecond: number }) => void) => {
-      ipcRenderer.on('updater:download-progress', (_e, data) => callback(data))
-      return () => ipcRenderer.off('updater:download-progress', callback)
+      const handler = (_e: Electron.IpcRendererEvent, data: { percent: number; transferred: number; total: number; bytesPerSecond: number }) => callback(data)
+      ipcRenderer.on('updater:download-progress', handler)
+      return () => ipcRenderer.off('updater:download-progress', handler)
     }
   }
 }

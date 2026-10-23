@@ -3,6 +3,7 @@ import { AlertCircle, ArrowDown, CheckCircle, Download, Loader2, X } from 'lucid
 import { Button, Modal } from '../components/ui'
 import { useUpdater } from '../stores/updater'
 import { cn } from '../lib/cn'
+import type { UpdateInfo } from '../../../shared/types'
 
 interface UpdateDialogProps {
   open: boolean
@@ -17,6 +18,66 @@ export function UpdateDialog({ open, onClose, version }: UpdateDialogProps) {
   const [error, setError] = useState<string | null>(null)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
   const checkRef = useRef(false)
+
+  const renderFooter = () => {
+    if (phase === 'idle' || phase === 'checking') {
+      return (
+        <Button variant="secondary" onClick={handleClose} disabled={phase === 'checking'}>
+          Close
+        </Button>
+      )
+    }
+    if (phase === 'available') {
+      return (
+        <>
+          <Button variant="secondary" onClick={handleClose} disabled>
+            Later
+          </Button>
+          <Button onClick={handleDownload}>
+            <ArrowDown className="mr-2 h-4 w-4" />
+            Download & Install
+          </Button>
+        </>
+      )
+    }
+    if (phase === 'downloading') {
+      return (
+        <Button variant="secondary" onClick={handleClose} disabled>
+          Cancel
+        </Button>
+      )
+    }
+    if (phase === 'downloaded') {
+      return (
+        <>
+          <Button variant="secondary" onClick={handleClose}>
+            Later
+          </Button>
+          <Button onClick={handleInstall} className="bg-danger hover:bg-danger/90">
+            <CheckCircle className="mr-2 h-4 w-4" />
+            Install & Restart
+          </Button>
+        </>
+      )
+    }
+    if (phase === 'error') {
+      return (
+        <>
+          <Button variant="secondary" onClick={() => { setPhase('idle'); setError(null); }}>
+            Try Again
+          </Button>
+          <Button variant="secondary" onClick={handleClose}>
+            Close
+          </Button>
+        </>
+      )
+    }
+    return (
+      <Button variant="secondary" onClick={handleClose}>
+        Close
+      </Button>
+    )
+  }
 
   // Sync with store
   useEffect(() => {
@@ -120,52 +181,7 @@ export function UpdateDialog({ open, onClose, version }: UpdateDialogProps) {
           ? 'An error occurred while checking for updates.'
           : 'Checking for updates...'
       }
-      footer={
-        <>
-          {phase === 'idle' || phase === 'checking' ? (
-            <Button variant="secondary" onClick={handleClose} disabled={phase === 'checking'}>
-              Close
-            </Button>
-          ) : phase === 'available' ? (
-            <>
-              <Button variant="secondary" onClick={handleClose} disabled={true}>
-                Later
-              </Button>
-              <Button onClick={handleDownload} disabled={phase === 'downloading'}>
-                <ArrowDown className="mr-2 h-4 w-4" />
-                Download & Install
-              </Button>
-            </>
-          ) : phase === 'downloading' ? (
-            <Button variant="secondary" onClick={handleClose} disabled={true}>
-              Cancel
-            </Button>
-          ) : phase === 'downloaded' ? (
-            <>
-              <Button variant="secondary" onClick={handleClose}>
-                Later
-              </Button>
-              <Button onClick={handleInstall} className="bg-danger hover:bg-danger/90">
-                <CheckCircle className="mr-2 h-4 w-4" />
-                Install & Restart
-              </Button>
-            </>
-          ) : phase === 'error' ? (
-            <>
-              <Button variant="secondary" onClick={() => { setPhase('idle'); setError(null); }}>
-                Try Again
-              </Button>
-              <Button variant="secondary" onClick={handleClose}>
-                Close
-              </Button>
-            </>
-          ) : (
-            <Button variant="secondary" onClick={handleClose}>
-              Close
-            </Button>
-          )}
-        </>
-      }
+      footer={renderFooter()}
     >
       <div className="space-y-4">
         {/* Status Icon */}

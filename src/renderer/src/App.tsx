@@ -5,6 +5,7 @@ import { ToastHost } from './components/ui'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { SplashScreen } from './components/SplashScreen'
 import { SetupScreen } from './components/SetupScreen'
+import { Footer } from './components/Footer'
 import { useSettings } from './stores/settings'
 import { useNav } from './stores/nav'
 import { useUi } from './stores/ui'
@@ -140,6 +141,7 @@ export function App() {
             {tab === 'customers' && <Customers />}
             {tab === 'settings' && <Settings />}
           </main>
+          <Footer />
         </div>
         <ToastHost />
       </div>

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { UpdaterStatus, UpdateInfo, DownloadProgress, UpdateCheckResult } from '../../../../shared/types'
+import type { UpdaterStatus, UpdateInfo, DownloadProgress, UpdateCheckResult } from '../../../shared/types'
 
 interface UpdaterState {
   status: UpdaterStatus

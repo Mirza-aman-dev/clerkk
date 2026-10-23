@@ -117,7 +117,8 @@ export function initializeUpdater(): void {
 
   ipcMain.handle('updater:open-release-notes', async () => {
     if (updateInfo?.releaseNotes) {
-      await shell.openExternal(updateInfo.releaseNotes)
+      const url = `https://github.com/Mirza-aman-dev/clerkk/releases/tag/v${updateInfo.version}`
+      await shell.openExternal(url)
     }
   })
 }

@@ -4,8 +4,11 @@ import {
   Database,
   Download,
   Info,
+  Mail,
+  MapPin,
   Package,
   Palette,
+  Phone,
   ReceiptText,
   RefreshCw,
   Save,
@@ -24,7 +27,7 @@ import type { AppSettings } from '../../../../shared/types'
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR', 'JPY', 'CAD', 'AUD', 'SGD', 'PKR', 'BDT', 'LKR', 'NPR']
 
-type Section = 'business' | 'billing' | 'preferences' | 'data' | 'updates' | 'about'
+type Section = 'business' | 'billing' | 'preferences' | 'data' | 'updates' | 'contact' | 'about'
 
 const sections: { id: Section; label: string; icon: typeof Building2 }[] = [
   { id: 'business', label: 'Business profile', icon: Building2 },
@@ -32,6 +35,7 @@ const sections: { id: Section; label: string; icon: typeof Building2 }[] = [
   { id: 'preferences', label: 'Preferences', icon: Palette },
   { id: 'data', label: 'Data & backup', icon: Database },
   { id: 'updates', label: 'Updates', icon: Package },
+  { id: 'contact', label: 'Contact', icon: Mail },
   { id: 'about', label: 'About & shortcuts', icon: Info }
 ]
 
@@ -66,6 +70,7 @@ export function Settings() {
           {section === 'preferences' && <PreferencesPanel settings={settings} />}
           {section === 'data' && <DataPanel />}
           {section === 'updates' && <UpdatePanel />}
+          {section === 'contact' && <ContactPanel />}
           {section === 'about' && <AboutPanel />}
         </div>
       </div>
@@ -483,6 +488,92 @@ function UpdatePanel() {
         </div>
       </SectionCard>
     </div>
+  )
+}
+
+function ContactPanel() {
+  return (
+    <div className="space-y-4">
+      <SectionCard title="Contact Developer">
+        <div className="space-y-4">
+          <div className="flex items-center gap-4 p-4 rounded-xl bg-brand/5 border border-brand/20">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand to-indigo-500 text-white shadow-lg shadow-brand/30">
+              <span className="text-2xl font-bold">M</span>
+            </div>
+            <div>
+              <p className="text-lg font-bold text-app-text">Mirza Aman</p>
+              <p className="text-sm text-app-muted">Founder & Developer</p>
+              <p className="mt-1 text-xs text-app-faint">Mirza Technologies</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <ContactCard
+              icon={<Mail className="h-5 w-5" />}
+              label="Email"
+              value="mzawyd@gmail.com"
+              href="mailto:mzawyd@gmail.com"
+            />
+            <ContactCard
+              icon={<Phone className="h-5 w-5" />}
+              label="Phone"
+              value="+91 8129004343"
+              href="tel:+918129004343"
+            />
+            <ContactCard
+              icon={<MapPin className="h-5 w-5" />}
+              label="Location"
+              value="India"
+              href="#"
+            />
+            <ContactCard
+              icon={<Mail className="h-5 w-5" />}
+              label="GitHub"
+              value="github.com/Mirza-aman-dev"
+              href="https://github.com/Mirza-aman-dev"
+            />
+          </div>
+
+          <div className="rounded-xl border border-app-border bg-app-surface2/50 p-4">
+            <p className="text-sm text-app-muted">
+              Feel free to reach out for support, feature requests, or business inquiries.
+            </p>
+            <p className="mt-2 text-xs text-app-faint">
+              Response time: Usually within 24-48 hours
+            </p>
+          </div>
+        </div>
+      </SectionCard>
+    </div>
+  )
+}
+
+function ContactCard({
+  icon,
+  label,
+  value,
+  href
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  href: string
+}) {
+  return (
+    <a
+      href={href}
+      target={href.startsWith('http') ? '_blank' : undefined}
+      rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
+      className="flex items-center gap-3 p-4 rounded-xl border border-app-border bg-app-surface hover:bg-app-surface2 transition-colors"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 text-brand">
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-app-faint uppercase tracking-wide">{label}</p>
+        <p className="text-sm font-medium text-app-text truncate">{value}</p>
+      </div>
+    </a>
   )
 }
 
