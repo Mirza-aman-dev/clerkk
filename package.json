@@ -25,6 +25,7 @@
     "better-sqlite3": "^11.10.0",
     "call-bind-apply-helpers": "^1.0.2",
     "clsx": "^2.1.1",
+    "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.451.0",

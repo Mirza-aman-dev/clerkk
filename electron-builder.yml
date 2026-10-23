@@ -83,6 +83,11 @@ extraResources:
   - from: node_modules/call-bind
     to: node_modules/call-bind
     filter: ["**/*"]
+publish:
+  provider: github
+  owner: Mirza-aman-dev
+  repo: clerkk
+  releaseType: release
 npmRebuild: true
 mac:
   target:

@@ -182,6 +182,33 @@ export const DEFAULT_SETTINGS: AppSettings = {
 }
 
 // Full typed API surface exposed on window.api via contextBridge.
+export interface UpdateInfo {
+  version: string
+  releaseNotes: string | null
+  releaseDate: string
+  files: { url: string; size: number }[]
+}
+
+export interface UpdaterStatus {
+  checking: boolean
+  updateAvailable: boolean
+  updateDownloaded: boolean
+  updateInfo: UpdateInfo | null
+}
+
+export interface DownloadProgress {
+  percent: number
+  transferred: number
+  total: number
+  bytesPerSecond: number
+}
+
+export interface UpdateCheckResult {
+  success: boolean
+  message?: string
+  updateInfo?: UpdateInfo
+}
+
 export interface ClerkkApi {
   app: {
     version: () => Promise<string>
@@ -241,5 +268,14 @@ export interface ClerkkApi {
   db: {
     clearAll: () => Promise<void>
     loadDemo: () => Promise<void>
+  }
+  updater: {
+    checkForUpdates: () => Promise<UpdateCheckResult>
+    downloadUpdate: () => Promise<UpdateCheckResult>
+    installUpdate: () => Promise<UpdateCheckResult>
+    getStatus: () => Promise<UpdaterStatus>
+    openReleaseNotes: () => Promise<void>
+    onStatus: (callback: (status: { status: string; data?: unknown }) => void) => () => void
+    onDownloadProgress: (callback: (progress: DownloadProgress) => void) => () => void
   }
 }

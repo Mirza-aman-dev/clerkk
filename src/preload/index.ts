@@ -60,6 +60,21 @@ const api: ClerkkApi = {
   db: {
     clearAll: () => ipcRenderer.invoke('db:clearAll'),
     loadDemo: () => ipcRenderer.invoke('db:loadDemo')
+  },
+  updater: {
+    checkForUpdates: () => ipcRenderer.invoke('updater:check-for-updates'),
+    downloadUpdate: () => ipcRenderer.invoke('updater:download-update'),
+    installUpdate: () => ipcRenderer.invoke('updater:install-update'),
+    getStatus: () => ipcRenderer.invoke('updater:get-status'),
+    openReleaseNotes: () => ipcRenderer.invoke('updater:open-release-notes'),
+    onStatus: (callback: (status: { status: string; data?: unknown }) => void) => {
+      ipcRenderer.on('updater:status', (_e, data) => callback(data))
+      return () => ipcRenderer.off('updater:status', callback)
+    },
+    onDownloadProgress: (callback: (progress: { percent: number; transferred: number; total: number; bytesPerSecond: number }) => void) => {
+      ipcRenderer.on('updater:download-progress', (_e, data) => callback(data))
+      return () => ipcRenderer.off('updater:download-progress', callback)
+    }
   }
 }
 

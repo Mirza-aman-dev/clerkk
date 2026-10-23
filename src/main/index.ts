@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell, session } from 'electron'
 import { join } from 'path'
 import { initDatabase } from './db'
 import { registerIpc } from './ipc'
+import { initializeUpdater, checkForUpdatesOnStartup } from './updater'
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -41,7 +42,11 @@ app.whenReady().then(() => {
   })
   initDatabase()
   registerIpc()
+  initializeUpdater()
   createWindow()
+
+  // Check for updates on startup (after window is shown)
+  checkForUpdatesOnStartup()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

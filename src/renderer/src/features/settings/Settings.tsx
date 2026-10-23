@@ -4,6 +4,7 @@ import {
   Database,
   Download,
   Info,
+  Package,
   Palette,
   ReceiptText,
   RefreshCw,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react'
 import { Badge, Button, Field, Input, Kbd, Modal, Select, Textarea, Toggle } from '../../components/ui'
 import { ImageUpload } from '../../components/ImageUpload'
+import { UpdateDialog } from '../../components/UpdateDialog'
 import { useSettings, useTheme } from '../../stores/settings'
 import { useScanner } from '../../stores/scanner'
 import { toast } from '../../stores/toasts'
@@ -22,13 +24,14 @@ import type { AppSettings } from '../../../../shared/types'
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR', 'JPY', 'CAD', 'AUD', 'SGD', 'PKR', 'BDT', 'LKR', 'NPR']
 
-type Section = 'business' | 'billing' | 'preferences' | 'data' | 'about'
+type Section = 'business' | 'billing' | 'preferences' | 'data' | 'updates' | 'about'
 
 const sections: { id: Section; label: string; icon: typeof Building2 }[] = [
   { id: 'business', label: 'Business profile', icon: Building2 },
   { id: 'billing', label: 'Billing & tax', icon: ReceiptText },
   { id: 'preferences', label: 'Preferences', icon: Palette },
   { id: 'data', label: 'Data & backup', icon: Database },
+  { id: 'updates', label: 'Updates', icon: Package },
   { id: 'about', label: 'About & shortcuts', icon: Info }
 ]
 
@@ -62,6 +65,7 @@ export function Settings() {
           {section === 'billing' && <BillingPanel settings={settings} />}
           {section === 'preferences' && <PreferencesPanel settings={settings} />}
           {section === 'data' && <DataPanel />}
+          {section === 'updates' && <UpdatePanel />}
           {section === 'about' && <AboutPanel />}
         </div>
       </div>
@@ -443,6 +447,42 @@ function ClearDataModal({ open, onClose }: { open: boolean; onClose: () => void 
         />
       </div>
     </Modal>
+  )
+}
+
+function UpdatePanel() {
+  const [version, setVersion] = useState('1.0.0')
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false)
+  useEffect(() => {
+    window.api.app.version().then(setVersion).catch(() => {})
+  }, [])
+
+  return (
+    <div className="space-y-4">
+      <UpdateDialog open={updateDialogOpen} onClose={() => setUpdateDialogOpen(false)} version={version} />
+      <SectionCard title="Software Updates">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-app-text">Check for Updates</p>
+              <p className="text-sm text-app-muted">Manually check for new versions</p>
+            </div>
+            <Button variant="secondary" onClick={() => setUpdateDialogOpen(true)}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Check Now
+            </Button>
+          </div>
+          <div className="rounded-xl border border-app-border bg-app-surface2/50 p-4">
+            <p className="text-sm text-app-muted">
+              Current version: <span className="font-mono font-medium text-app-text">{version}</span>
+            </p>
+            <p className="mt-2 text-xs text-app-faint">
+              Updates are downloaded from GitHub. On startup, the app automatically checks for updates if an internet connection is available.
+            </p>
+          </div>
+        </div>
+      </SectionCard>
+    </div>
   )
 }
 
