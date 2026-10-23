@@ -322,6 +322,7 @@ export async function generateBarcodeImage(productName: string, priceCents?: num
 // Generate barcode PDF for all products
 export async function generateBarcodesPdf(): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default
+  const { join } = require('path')
   
   const products = listProducts({ sort: 'name', dir: 'asc' })
   
@@ -339,19 +340,20 @@ export async function generateBarcodesPdf(): Promise<Buffer> {
   }
   
   // Reload products with updated barcode images
-  const updatedProducts = listProducts({ sort: 'name', dir: 'asc' })
+  const products2 = listProducts({ sort: 'name', dir: 'asc' })
   
   // PDF generation
-  const PDFDocument2 = (await import('pdfkit')).default
   const doc = new PDFDocument({ 
     layout: 'landscape',
     margins: { top: 40, bottom: 40, left: 40, right: 40 }
   })
   
+  // Register DejaVu fonts
+  doc.registerFont('DejaVuSans', join(__dirname, 'fonts', 'DejaVuSans.ttf'))
+  doc.registerFont('DejaVuSans-Bold', join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf'))
+  
   const chunks: Buffer[] = []
   doc.on('data', (chunk: Buffer) => chunks.push(chunk))
-  
-  const products2 = listProducts({ sort: 'name', dir: 'asc' })
   
   const margin = 40
   const cardWidth = 200
@@ -382,7 +384,7 @@ export async function generateBarcodesPdf(): Promise<Buffer> {
     doc.rect(col * 210 + 40, y, 200, 200).stroke()
     
     // Product name
-    doc.fontSize(12).font('Helvetica-Bold')
+    doc.fontSize(12).font('DejaVuSans-Bold')
     doc.text(product.name, 40 + (col * 210) + 10, y + 10, { width: 180 })
     
     // Barcode
@@ -398,12 +400,12 @@ export async function generateBarcodesPdf(): Promise<Buffer> {
     }
     
     // Price below barcode
-    doc.fontSize(14).font('Helvetica-Bold')
+    doc.fontSize(14).font('DejaVuSans-Bold')
     const priceStr = `₹${(product.price_cents / 100).toFixed(2)}`
     doc.text(priceStr, 40 + (col * 210) + 10, y + 165, { width: 180, align: 'center' })
     
     // SKU below price
-    doc.fontSize(8).font('Helvetica')
+    doc.fontSize(8).font('DejaVuSans')
     doc.text(product.sku, 40 + (col * 210) + 10, y + 180, { width: 180, align: 'center' })
   }
   
