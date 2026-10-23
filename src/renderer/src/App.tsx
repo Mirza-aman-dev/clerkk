@@ -28,7 +28,7 @@ export function App() {
   const requestAddProduct = useUi((s) => s.requestAddProduct)
 
   const [splashDone, setSplashDone] = useState(false)
-  const [setupDone, setSetupDone] = useState(false)
+  const [setupDone, setSetupDone] = useState(() => localStorage.getItem('clerkk_setup_complete') === 'true')
 
   // Start loading settings immediately
   useEffect(() => {

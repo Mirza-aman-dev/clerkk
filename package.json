@@ -1,6 +1,6 @@
 {
   "name": "clerkk",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Premium desktop Inventory Management + Barcode POS",
   "main": "./out/main/index.js",
   "author": "Clerkk",
