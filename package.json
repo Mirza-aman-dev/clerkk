@@ -1,6 +1,6 @@
 {
   "name": "clerkk",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Premium desktop Inventory Management + Barcode POS",
   "main": "./out/main/index.js",
   "author": "Clerkk",
@@ -20,15 +20,18 @@
     "dist": "electron-vite build && electron-builder"
   },
   "dependencies": {
+    "@types/pdfkit": "^0.17.7",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.21.3",
     "better-sqlite3": "^11.10.0",
+    "bwip-js": "^4.11.4",
     "call-bind-apply-helpers": "^1.0.2",
     "clsx": "^2.1.1",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.9",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.451.0",
+    "pdfkit": "^0.20.2",
     "pdfmake": "^0.2.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

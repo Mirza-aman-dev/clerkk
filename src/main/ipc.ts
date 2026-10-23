@@ -59,6 +59,12 @@ export function registerIpc(): void {
   ipcMain.handle('products:generateSku', () => productsRepo.generateSku())
   ipcMain.handle('products:importCsv', (_e, rows: string[][]) => productsRepo.importCsv(rows))
   ipcMain.handle('products:exportCsv', () => productsRepo.exportCsv())
+  ipcMain.handle('products:generateBarcodeImage', async (_e, productName: string, priceCents?: number) => {
+    return await productsRepo.generateBarcodeImage(productName, priceCents)
+  })
+  ipcMain.handle('products:generateBarcodesPdf', async () => {
+    return await productsRepo.generateBarcodesPdf()
+  })
 
   ipcMain.handle('customers:list', (_e, search?: string) => customersRepo.listCustomers(search))
   ipcMain.handle('customers:get', (_e, id: number) => customersRepo.getCustomer(id))

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Plus, Wand2, Image as ImageIcon } from 'lucide-react'
+import { Plus, Wand2, Image as ImageIcon, Loader2 } from 'lucide-react'
 import { Button, Field, Input, Modal, Select, Textarea } from '../../components/ui'
 import { ImageUpload } from '../../components/ImageUpload'
-import { BarcodeImageUpload } from '../../components/BarcodeImageUpload'
 import { toast } from '../../stores/toasts'
 import { useSettings } from '../../stores/settings'
 import { useMoney } from '../../hooks/useMoney'
@@ -31,7 +30,6 @@ export function ProductModal({
   const settings = useSettings((s) => s.settings)
 
   const [name, setName] = useState('')
-  const [sku, setSku] = useState('')
   const [price, setPrice] = useState('')
   const [cost, setCost] = useState('')
   const [stock, setStock] = useState('0')
@@ -42,12 +40,12 @@ export function ProductModal({
   const [newCategory, setNewCategory] = useState('')
   const [addingCategory, setAddingCategory] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [generatingBarcode, setGeneratingBarcode] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (!open) return
     setName(product?.name ?? '')
-    setSku(product?.sku ?? '')
     setPrice(product ? (product.price_cents / 100).toFixed(2) : '')
     setCost(product ? (product.cost_cents / 100).toFixed(2) : '')
     setStock(String(product?.stock ?? 0))
@@ -58,11 +56,6 @@ export function ProductModal({
     setErrors({})
     setNewCategory('')
   }, [open, product, settings])
-
-  async function generateSku() {
-    const s = await window.api.products.generateSku()
-    setSku(s)
-  }
 
   async function addCategory() {
     const name = newCategory.trim()
@@ -84,7 +77,6 @@ export function ProductModal({
   function validate(): boolean {
     const next: Record<string, string> = {}
     if (!name.trim()) next.name = 'Name is required'
-    if (!sku.trim()) next.sku = 'SKU / barcode is required'
     const priceVal = Number(price)
     if (price === '' || Number.isNaN(priceVal) || priceVal < 0) next.price = 'Enter a valid price'
     setErrors(next)
@@ -94,10 +86,26 @@ export function ProductModal({
   async function save() {
     if (!validate()) return
     setBusy(true)
+    setGeneratingBarcode(true)
     try {
+      // Generate barcode for new products
+      let sku = product?.sku ?? ''
+      if (!product) {
+        try {
+          setGeneratingBarcode(true)
+          const result = await window.api.products.generateBarcodeImage(name.trim())
+          sku = result.sku
+        } catch (e) {
+          toast.error('Could not generate barcode', errMessage(e))
+          setBusy(false)
+          setGeneratingBarcode(false)
+          return
+        }
+      }
+
       const input = {
         name: name.trim(),
-        sku: sku.trim(),
+        sku,
         price_cents: amountToCents(Number(price)),
         cost_cents: cost === '' ? 0 : amountToCents(Number(cost) || 0),
         stock: parseInt(stock, 10) || 0,
@@ -111,7 +119,7 @@ export function ProductModal({
         toast.success('Product updated', input.name)
       } else {
         await window.api.products.create(input)
-        toast.success('Product added', input.name)
+        toast.success('Product added with barcode', input.name)
       }
       onSaved()
       onClose()
@@ -119,6 +127,7 @@ export function ProductModal({
       toast.error('Could not save product', errMessage(e))
     } finally {
       setBusy(false)
+      setGeneratingBarcode(false)
     }
   }
 
@@ -128,14 +137,19 @@ export function ProductModal({
       onClose={onClose}
       size="lg"
       title={product ? 'Edit product' : 'Add product'}
-      description={product ? `Editing "${product.name}"` : 'Create a new product in your catalog'}
+      description={product ? `Editing "${product.name}"` : 'Create a new product in your catalog. Barcode will be auto-generated.'}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={busy}>
+          <Button variant="secondary" onClick={onClose} disabled={busy || generatingBarcode}>
             Cancel
           </Button>
-          <Button onClick={save} loading={busy}>
-            {product ? 'Save changes' : 'Add product'}
+          <Button onClick={save} loading={busy || generatingBarcode}>
+            {generatingBarcode ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating Barcode...
+              </>
+            ) : product ? 'Save changes' : 'Add product'}
           </Button>
         </>
       }
@@ -149,31 +163,6 @@ export function ProductModal({
             invalid={!!errors.name}
             autoFocus
           />
-        </Field>
-
-        <Field label="SKU / Barcode" error={errors.sku}>
-          <div className="flex flex-col gap-2">
-            <div className="flex gap-2">
-              <Input
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="Scan or enter barcode"
-                invalid={!!errors.sku}
-              />
-              <Button type="button" variant="secondary" size="icon" onClick={generateSku} title="Generate barcode">
-                <Wand2 style={{ width: 16, height: 16 }} />
-              </Button>
-            </div>
-            <BarcodeImageUpload
-              onBarcodeDetected={(code) => {
-                setSku(code)
-                toast.success('Barcode detected', code)
-              }}
-            />
-            <p className="text-xs text-app-faint">
-              Upload a barcode image to auto-fill the code
-            </p>
-          </div>
         </Field>
 
         <Field label="Price" error={errors.price}>

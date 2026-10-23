@@ -25,7 +25,9 @@ const api: ClerkkApi = {
     adjustStock: (id, delta) => ipcRenderer.invoke('products:adjustStock', id, delta),
     generateSku: () => ipcRenderer.invoke('products:generateSku'),
     importCsv: (rows) => ipcRenderer.invoke('products:importCsv', rows),
-    exportCsv: () => ipcRenderer.invoke('products:exportCsv')
+    exportCsv: () => ipcRenderer.invoke('products:exportCsv'),
+    generateBarcodeImage: (productName: string, priceCents?: number) => ipcRenderer.invoke('products:generateBarcodeImage', productName, priceCents),
+    generateBarcodesPdf: () => ipcRenderer.invoke('products:generateBarcodesPdf')
   },
   customers: {
     list: (search) => ipcRenderer.invoke('customers:list', search),

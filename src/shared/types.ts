@@ -234,6 +234,8 @@ export interface ClerkkApi {
     generateSku: () => Promise<string>
     importCsv: (rows: string[][]) => Promise<ImportResult>
     exportCsv: () => Promise<string>
+    generateBarcodeImage: (productName: string, priceCents?: number) => Promise<{ sku: string; filePath: string }>
+    generateBarcodesPdf: () => Promise<Buffer>
   }
   customers: {
     list: (search?: string) => Promise<Customer[]>

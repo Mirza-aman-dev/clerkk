@@ -1,6 +1,9 @@
 import { getDb, now, logActivity } from './index'
 import { Product, ProductInput, ListProductsFilter, ImportResult } from '../../shared/types'
 import { ean13CheckDigit, amountToCents } from '../../shared/util'
+import * as bwipjs from 'bwip-js'
+import { promises as fs } from 'fs'
+import { join } from 'path'
 
 const PRODUCT_SELECT = `
   SELECT p.*, c.name AS category_name
@@ -247,4 +250,168 @@ export function exportCsv(): string {
     )
   }
   return lines.join('\n')
+}
+
+// Get barcode folder path (Clerk Products folder on Desktop or Downloads)
+async function getBarcodeFolder(): Promise<string> {
+  const { app } = require('electron')
+  const desktop = app.getPath('desktop')
+  const downloads = app.getPath('downloads')
+  const folderName = 'Clerk Products'
+  
+  // Try Desktop first, then Downloads
+  for (const base of [desktop, downloads]) {
+    const folder = join(base, folderName)
+    try {
+      await fs.mkdir(folder, { recursive: true })
+      return folder
+    } catch {
+      // Try next location
+    }
+  }
+  // Fallback to userData
+  const { app: electronApp } = require('electron')
+  const fallback = join(electronApp.getPath('userData'), folderName)
+  await fs.mkdir(fallback, { recursive: true })
+  return fallback
+}
+
+// Generate EAN-13 barcode image and save to folder
+export async function generateBarcodeImage(productName: string, priceCents?: number): Promise<{ sku: string; filePath: string }> {
+  const db = getDb()
+  
+  // Generate unique SKU (EAN-13)
+  let sku = ''
+  for (let i = 0; i < 100; i++) {
+    const base = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join('')
+    const checkDigit = ean13CheckDigit(base)
+    sku = base + checkDigit
+    const exists = db.prepare('SELECT 1 FROM products WHERE sku = ?').get(sku)
+    if (!exists) break
+  }
+  if (!sku) {
+    // fallback: timestamp-based unique code
+    const t = Date.now().toString().padStart(13, '0').slice(-13)
+    sku = t.slice(0, 12) + ean13CheckDigit(t.slice(0, 12))
+  }
+
+  // Generate barcode image using bwip-js
+  const pngBuffer = await bwipjs.toBuffer({
+    bcid: 'ean13',
+    text: sku,
+    scale: 3,
+    height: 10,
+    includetext: true,
+    textxalign: 'center',
+    textfont: 'Helvetica',
+    fontsize: 12
+  })
+
+  // Save barcode image
+  const folder = await getBarcodeFolder()
+  const safeName = productName.replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_')
+  const priceStr = priceCents ? `_₹${(priceCents / 100).toFixed(2).replace('.', '-')}` : ''
+  const fileName = `${safeName}${priceStr}_${sku}.png`
+  const filePath = join(folder, fileName)
+  
+  await fs.writeFile(filePath, pngBuffer)
+  
+  return { sku, filePath }
+}
+
+// Generate barcode PDF for all products
+export async function generateBarcodesPdf(): Promise<Buffer> {
+  const PDFDocument = (await import('pdfkit')).default
+  
+  const products = listProducts({ sort: 'name', dir: 'asc' })
+  
+  // Generate missing barcodes
+  for (const product of products) {
+    if (!product.barcode_image) {
+      try {
+        const result = await generateBarcodeImage(product.name, product.price_cents)
+        // Update product with barcode image path
+        getDb().prepare('UPDATE products SET barcode_image = ? WHERE id = ?').run(result.filePath, product.id)
+      } catch (e) {
+        console.error(`Failed to generate barcode for ${product.name}:`, e)
+      }
+    }
+  }
+  
+  // Reload products with updated barcode images
+  const updatedProducts = listProducts({ sort: 'name', dir: 'asc' })
+  
+  // PDF generation
+  const PDFDocument2 = (await import('pdfkit')).default
+  const doc = new PDFDocument({ 
+    layout: 'landscape',
+    margins: { top: 40, bottom: 40, left: 40, right: 40 }
+  })
+  
+  const chunks: Buffer[] = []
+  doc.on('data', (chunk: Buffer) => chunks.push(chunk))
+  
+  const products2 = listProducts({ sort: 'name', dir: 'asc' })
+  
+  const margin = 40
+  const cardWidth = 200
+  const cardHeight = 200
+  
+  let y = 40
+  
+  for (let i = 0; i < products2.length; i++) {
+    const product = products2[i]
+    
+    if (i > 0 && i % 2 === 0) {
+      y += 230
+      
+      // Check if we need new page
+      if (y + 200 > doc.page.height - 40) {
+        doc.addPage()
+        y = 40
+      }
+    }
+    
+    const col = i % 2
+    const cardX = 40 + (col * 210)
+    const cardY = y
+    const cardWidth = 200
+    const cardHeight = 200
+    
+    // Draw border
+    doc.rect(col * 210 + 40, y, 200, 200).stroke()
+    
+    // Product name
+    doc.fontSize(12).font('Helvetica-Bold')
+    doc.text(product.name, 40 + (col * 210) + 10, y + 10, { width: 180 })
+    
+    // Barcode
+    if (product.barcode_image) {
+      try {
+        const fs = require('fs')
+        if (fs.existsSync(product.barcode_image)) {
+          doc.image(product.barcode_image, 40 + (col * 210) + 10, y + 40, { width: 180 })
+        }
+      } catch (e) {
+        // If barcode image not found, skip
+      }
+    }
+    
+    // Price below barcode
+    doc.fontSize(14).font('Helvetica-Bold')
+    const priceStr = `₹${(product.price_cents / 100).toFixed(2)}`
+    doc.text(priceStr, 40 + (col * 210) + 10, y + 165, { width: 180, align: 'center' })
+    
+    // SKU below price
+    doc.fontSize(8).font('Helvetica')
+    doc.text(product.sku, 40 + (col * 210) + 10, y + 180, { width: 180, align: 'center' })
+  }
+  
+  return new Promise<Buffer>((resolve, reject) => {
+    const chunks: Buffer[] = []
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk))
+    doc.on('end', () => resolve(Buffer.concat(chunks)))
+    doc.on('error', reject)
+    doc.end()
+  })
 }

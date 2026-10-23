@@ -4,6 +4,8 @@ import {
   ArrowUp,
   ArrowUpDown,
   Download,
+  FileText,
+  Loader2,
   Package,
   PackageMinus,
   Pencil,
@@ -66,6 +68,8 @@ export function Products() {
   const [adjusting, setAdjusting] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [brcOpen, setBrcOpen] = useState(false)
+  const [brcGenerating, setBrcGenerating] = useState(false)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -156,6 +160,27 @@ export function Products() {
     }
   }
 
+  async function handleBrcGenerate() {
+    setBrcGenerating(true)
+    try {
+      const pdfBuffer = await window.api.products.generateBarcodesPdf()
+      const uint8Array = new Uint8Array(pdfBuffer)
+      const blob = new Blob([uint8Array], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `barcodes-${new Date().toISOString().slice(0, 10)}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success('PDF generated', 'Barcode PDF downloaded')
+    } catch (e) {
+      toast.error('Failed to generate PDF', errMessage(e))
+    } finally {
+      setBrcGenerating(false)
+      setBrcOpen(false)
+    }
+  }
+
   const SortHeader = ({ label, k }: { label: string; k: SortKey }) => (
     <button
       onClick={() => toggleSort(k)}
@@ -213,6 +238,24 @@ export function Products() {
           <Button variant="secondary" onClick={handleExport}>
             <Download style={{ width: 16, height: 16 }} />
             Export
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => setBrcOpen(true)}
+            disabled={brcGenerating}
+            className="gap-2"
+          >
+            {brcGenerating ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <FileText style={{ width: 16, height: 16 }} />
+                BRC
+              </>
+            )}
           </Button>
           <Button
             onClick={() => {
@@ -407,7 +450,69 @@ export function Products() {
           </p>
         </div>
       </Modal>
+
+      <BrcModal
+        open={brcOpen}
+        onClose={() => setBrcOpen(false)}
+        generating={brcGenerating}
+        onGenerate={handleBrcGenerate}
+      />
     </div>
+  )
+}
+
+function BrcModal({
+  open,
+  onClose,
+  generating,
+  onGenerate
+}: {
+  open: boolean
+  onClose: () => void
+  generating: boolean
+  onGenerate: () => Promise<void>
+}) {
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="lg"
+      title="Generate Barcode PDF"
+      description="Generate a PDF with all product barcodes. Products without barcodes will have one generated automatically."
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={generating}>
+            Close
+          </Button>
+          <Button
+            onClick={onGenerate}
+            loading={generating}
+          >
+            {generating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating PDF...
+              </>
+            ) : (
+              <>
+                <FileText style={{ width: 16, height: 16 }} />
+                Generate PDF
+              </>
+            )}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-app-muted">
+          This will generate a PDF with all product barcodes in a 2-column layout.
+          Each barcode includes the product name, price below the barcode, and SKU.
+        </p>
+        <p className="text-xs text-app-faint">
+          Products without barcodes will have one generated automatically.
+        </p>
+      </div>
+    </Modal>
   )
 }
 
