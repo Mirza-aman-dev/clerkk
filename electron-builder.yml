@@ -92,6 +92,7 @@ npmRebuild: true
 mac:
   target:
     - dmg
+    - zip
   category: public.app-category.business
   icon: build/icon.icns
 win:
