@@ -9,6 +9,7 @@ import {
   Users,
   type LucideIcon
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { cn } from '../lib/cn'
 import { useNav, type Tab } from '../stores/nav'
 import { useTheme } from '../stores/settings'
@@ -29,6 +30,11 @@ export function Sidebar() {
   const theme = useTheme((s) => s.theme)
   const toggle = useTheme((s) => s.toggle)
   const cartQty = useCart((s) => cartCount(s.lines))
+  const [version, setVersion] = useState('1.0.0')
+
+  useEffect(() => {
+    window.api.app.version().then(setVersion).catch(() => {})
+  }, [])
 
   return (
     <aside className="flex w-[232px] shrink-0 flex-col border-r border-app-border bg-app-surface">
@@ -83,7 +89,7 @@ export function Sidebar() {
           )}
           {theme === 'dark' ? 'Dark mode' : 'Light mode'}
         </button>
-        <p className="px-3 pt-2 text-[11px] text-app-faint">Clerkk v1.0.0</p>
+        <p className="px-3 pt-2 text-[11px] text-app-faint">Clerkk v{version}</p>
       </div>
     </aside>
   )

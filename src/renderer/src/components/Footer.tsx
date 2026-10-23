@@ -6,7 +6,6 @@ export function Footer() {
       <p className="flex items-center justify-center gap-1.5 text-xs text-app-faint">
         <span>Developed by</span>
         <span className="font-medium text-app-muted">Mirza Aman</span>
-        <Heart className="h-3 w-3 text-danger" aria-hidden="true" />
       </p>
     </footer>
   )
