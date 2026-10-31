@@ -6,7 +6,7 @@ import { copyFileSync, mkdirSync, existsSync } from 'fs'
 export default defineConfig({
   main: {
     plugins: [
-      externalizeDepsPlugin({ exclude: ['pdfkit', 'bwip-js'] }),
+      externalizeDepsPlugin({ exclude: ['pdfkit', 'bwip-js', '@pdf-lib/standard-fonts'] }),
       {
         name: 'copy-fonts',
         writeBundle() {

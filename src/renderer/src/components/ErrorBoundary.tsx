@@ -19,6 +19,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
 
   render(): ReactNode {
     if (this.state.error) {
+      const msg = this.state.error.message || ''
       return (
         <div className="flex h-screen w-screen items-center justify-center bg-app-bg p-6 text-app-text">
           <div className="flex max-w-md flex-col items-center gap-4 text-center">
@@ -27,12 +28,17 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
             </div>
             <div>
               <h1 className="text-lg font-semibold">Something went wrong</h1>
-              <p className="mt-1 text-sm text-app-muted">{this.state.error.message}</p>
+              {msg && <p className="mt-1 text-sm text-app-muted">{msg}</p>}
             </div>
-            <Button onClick={() => this.setState({ error: null })}>
-              <RotateCw style={{ width: 16, height: 16 }} />
-              Try again
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => this.setState({ error: null })}>
+                <RotateCw style={{ width: 16, height: 16 }} />
+                Try again
+              </Button>
+              <Button variant="secondary" onClick={() => window.location.reload()}>
+                Reload
+              </Button>
+            </div>
           </div>
         </div>
       )

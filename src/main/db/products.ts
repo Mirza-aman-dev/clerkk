@@ -162,69 +162,140 @@ export function generateSku(): string {
   return t
 }
 
-export function importCsv(rows: string[][]): ImportResult {
+export async function importCsv(rows: string[][]): Promise<ImportResult> {
   const db = getDb()
   const result: ImportResult = { created: 0, updated: 0, errors: [] }
-  // Detect & skip header row
+  if (rows.length === 0) return result
+
+  // Detect columns from header if present
   let start = 0
-  if (rows.length > 0) {
-    const first = rows[0].map((c) => c.trim().toLowerCase())
-    if (first.includes('name') && first.includes('sku')) start = 1
+  let nameIdx = 0
+  let skuIdx: number | null = 1
+  let priceIdx: number | null = 2
+  let costIdx: number | null = 3
+  let stockIdx: number | null = 4
+  let categoryIdx: number | null = 5
+  let thresholdIdx: number | null = 6
+  let descIdx: number | null = 7
+
+  const first = rows[0].map((c) => c.trim().toLowerCase())
+  const hasNameHeader = first.some((h) => h === 'name' || h.includes('product name') || h.includes('item name'))
+
+  if (hasNameHeader) {
+    start = 1
+    nameIdx = first.findIndex((h) => h === 'name' || h.includes('product name') || h.includes('item name'))
+    const sIdx = first.findIndex((h) => h.includes('sku') || h.includes('barcode') || h.includes('code'))
+    skuIdx = sIdx >= 0 ? sIdx : null
+
+    const pIdx = first.findIndex((h) => h.includes('price') || h.includes('rate') || h.includes('mrp'))
+    priceIdx = pIdx >= 0 ? pIdx : null
+
+    const cIdx = first.findIndex((h) => h.includes('cost'))
+    costIdx = cIdx >= 0 ? cIdx : null
+
+    const qIdx = first.findIndex((h) => h.includes('stock') || h.includes('qty') || h.includes('quantity'))
+    stockIdx = qIdx >= 0 ? qIdx : null
+
+    const catIdx = first.findIndex((h) => h.includes('category') || h.includes('group'))
+    categoryIdx = catIdx >= 0 ? catIdx : null
+
+    const thIdx = first.findIndex((h) => h.includes('threshold') || h.includes('low stock') || h.includes('min stock'))
+    thresholdIdx = thIdx >= 0 ? thIdx : null
+
+    const dIdx = first.findIndex((h) => h.includes('desc') || h.includes('description') || h.includes('notes'))
+    descIdx = dIdx >= 0 ? dIdx : null
   }
 
-  const tx = db.transaction(() => {
-    for (let i = start; i < rows.length; i++) {
-      const r = rows[i]
-      if (!r || r.every((c) => !String(c).trim())) continue
-      const [name, sku, price, cost, stock, category, threshold, description] = r
-      if (!name?.trim() || !sku?.trim()) {
-        result.errors.push(`Row ${i + 1}: missing name or SKU`)
-        continue
-      }
-      const priceCents = amountToCents(Number(price) || 0)
-      const costCents = amountToCents(Number(cost) || 0)
-      const qty = parseInt(String(stock ?? '0'), 10) || 0
-      const th = parseInt(String(threshold ?? '5'), 10) || 5
+  for (let i = start; i < rows.length; i++) {
+    const r = rows[i]
+    if (!r || r.every((c) => !String(c).trim())) continue
 
-      let categoryId: number | null = null
-      if (category?.trim()) {
-        const cat = db.prepare('SELECT id FROM categories WHERE name = ? COLLATE NOCASE').get(category.trim()) as
+    const name = (nameIdx >= 0 && r[nameIdx] ? r[nameIdx] : r[0])?.trim()
+    if (!name) {
+      result.errors.push(`Row ${i + 1}: missing product name`)
+      continue
+    }
+
+    const rawSku = skuIdx !== null && r[skuIdx] ? r[skuIdx].trim() : ''
+    const rawPrice = priceIdx !== null && r[priceIdx] !== undefined ? r[priceIdx] : ''
+    const rawCost = costIdx !== null && r[costIdx] !== undefined ? r[costIdx] : ''
+    const rawStock = stockIdx !== null && r[stockIdx] !== undefined ? r[stockIdx] : ''
+    const rawCategory = categoryIdx !== null && r[categoryIdx] !== undefined ? r[categoryIdx] : ''
+    const rawThreshold = thresholdIdx !== null && r[thresholdIdx] !== undefined ? r[thresholdIdx] : ''
+    const rawDesc = descIdx !== null && r[descIdx] !== undefined ? r[descIdx] : ''
+
+    const priceCents = amountToCents(Number(rawPrice) || 0)
+    const costCents = amountToCents(Number(rawCost) || 0)
+    const qty = parseInt(String(rawStock ?? '0'), 10) || 0
+    const th = parseInt(String(rawThreshold ?? '5'), 10) || 5
+
+    let categoryId: number | null = null
+    if (rawCategory?.trim()) {
+      const cat = db.prepare('SELECT id FROM categories WHERE name = ? COLLATE NOCASE').get(rawCategory.trim()) as
+        | { id: number }
+        | undefined
+      categoryId = cat?.id ?? null
+      if (!cat) {
+        const info = db.prepare('INSERT INTO categories (name, created_at) VALUES (?, ?)').run(rawCategory.trim(), now())
+        categoryId = Number(info.lastInsertRowid)
+      }
+    }
+
+    try {
+      let sku = rawSku
+      let barcodeFilePath: string | null = null
+
+      if (sku) {
+        const existing = db.prepare('SELECT id FROM products WHERE sku = ?').get(sku) as
           | { id: number }
           | undefined
-        categoryId = cat?.id ?? null
-        if (!cat) {
-          const info = db.prepare('INSERT INTO categories (name, created_at) VALUES (?, ?)').run(category.trim(), now())
-          categoryId = Number(info.lastInsertRowid)
+        const input: ProductInput = {
+          name,
+          sku,
+          price_cents: priceCents,
+          cost_cents: costCents,
+          stock: qty,
+          low_stock_threshold: th,
+          category_id: categoryId,
+          description: rawDesc?.trim() || null
+        }
+        if (existing) {
+          applyProduct(existing.id, input)
+          result.updated++
+          continue
+        }
+      } else {
+        // Auto-generate barcode image and unique SKU
+        try {
+          const barcodeResult = await generateBarcodeImage(name, priceCents)
+          sku = barcodeResult.sku
+          barcodeFilePath = barcodeResult.filePath
+        } catch {
+          sku = generateSku()
         }
       }
 
-      const existing = db.prepare('SELECT id FROM products WHERE sku = ?').get(sku.trim()) as
-        | { id: number }
-        | undefined
       const input: ProductInput = {
-        name: name.trim(),
-        sku: sku.trim(),
+        name,
+        sku,
         price_cents: priceCents,
         cost_cents: costCents,
         stock: qty,
         low_stock_threshold: th,
         category_id: categoryId,
-        description: description?.trim() || null
+        description: rawDesc?.trim() || null
       }
-      try {
-        if (existing) {
-          applyProduct(existing.id, input)
-          result.updated++
-        } else {
-          createProduct(input)
-          result.created++
-        }
-      } catch (e) {
-        result.errors.push(`Row ${i + 1}: ${(e as Error).message}`)
+
+      const created = createProduct(input)
+      if (barcodeFilePath) {
+        db.prepare('UPDATE products SET barcode_image = ? WHERE id = ?').run(barcodeFilePath, created.id)
       }
+      result.created++
+    } catch (e) {
+      result.errors.push(`Row ${i + 1}: ${(e as Error).message}`)
     }
-  })
-  tx()
+  }
+
   return result
 }
 
@@ -343,14 +414,18 @@ export async function generateBarcodesPdf(): Promise<Buffer> {
   const products2 = listProducts({ sort: 'name', dir: 'asc' })
   
   // PDF generation
+  const regularFont = join(__dirname, 'fonts', 'DejaVuSans.ttf')
+  const boldFont = join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf')
+
   const doc = new PDFDocument({ 
     layout: 'landscape',
-    margins: { top: 40, bottom: 40, left: 40, right: 40 }
+    margins: { top: 40, bottom: 40, left: 40, right: 40 },
+    font: regularFont
   })
   
   // Register DejaVu fonts
-  doc.registerFont('DejaVuSans', join(__dirname, 'fonts', 'DejaVuSans.ttf'))
-  doc.registerFont('DejaVuSans-Bold', join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf'))
+  doc.registerFont('DejaVuSans', regularFont)
+  doc.registerFont('DejaVuSans-Bold', boldFont)
   
   const chunks: Buffer[] = []
   doc.on('data', (chunk: Buffer) => chunks.push(chunk))

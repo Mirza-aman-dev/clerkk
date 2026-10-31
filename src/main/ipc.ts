@@ -57,7 +57,7 @@ export function registerIpc(): void {
     productsRepo.adjustStock(id, delta)
   )
   ipcMain.handle('products:generateSku', () => productsRepo.generateSku())
-  ipcMain.handle('products:importCsv', (_e, rows: string[][]) => productsRepo.importCsv(rows))
+  ipcMain.handle('products:importCsv', async (_e, rows: string[][]) => await productsRepo.importCsv(rows))
   ipcMain.handle('products:exportCsv', () => productsRepo.exportCsv())
   ipcMain.handle('products:generateBarcodeImage', async (_e, productName: string, priceCents?: number) => {
     return await productsRepo.generateBarcodeImage(productName, priceCents)

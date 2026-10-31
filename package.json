@@ -1,6 +1,6 @@
 {
   "name": "clerkk",
-  "version": "1.0.9",
+  "version": "1.0.11",
   "description": "Premium desktop Inventory Management + Barcode POS",
   "main": "./out/main/index.js",
   "author": "Clerkk",
@@ -20,6 +20,7 @@
     "dist": "electron-vite build && electron-builder"
   },
   "dependencies": {
+    "@pdf-lib/standard-fonts": "^1.0.0",
     "@types/pdfkit": "^0.17.7",
     "@zxing/browser": "^0.2.1",
     "@zxing/library": "^0.21.3",

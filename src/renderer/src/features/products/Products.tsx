@@ -439,14 +439,14 @@ export function Products() {
       >
         <div className="space-y-3">
           <p className="text-sm text-app-muted">
-            Columns: <span className="font-mono text-xs">Name, SKU/Barcode, Price, Cost, Stock, Category, Low Stock Threshold, Description</span>
+            Columns: <span className="font-mono text-xs">Name, SKU/Barcode (optional), Price, Cost, Stock, Category, Low Stock Threshold, Description</span>
           </p>
           <Button className="w-full" onClick={() => fileRef.current?.click()}>
             <Upload style={{ width: 16, height: 16 }} />
             Choose CSV file
           </Button>
           <p className="text-xs text-app-faint">
-            Use Export to get a correctly formatted template. A header row is optional.
+            SKU/barcode is optional. If omitted, Clerkk will automatically generate an EAN-13 barcode image and register the product.
           </p>
         </div>
       </Modal>
