@@ -10,6 +10,7 @@ import {
   PackageMinus,
   Pencil,
   Plus,
+  Printer,
   Search,
   Trash2,
   Upload
@@ -160,21 +161,49 @@ export function Products() {
     }
   }
 
-  async function handleBrcGenerate() {
+  async function handleBrcGenerate(format: '26mm-label' | 'a4-sheet' = '26mm-label') {
     setBrcGenerating(true)
     try {
-      const pdfBuffer = await window.api.products.generateBarcodesPdf()
+      const pdfBuffer = await window.api.products.generateBarcodesPdf(format)
       const uint8Array = new Uint8Array(pdfBuffer)
       const blob = new Blob([uint8Array], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `barcodes-${new Date().toISOString().slice(0, 10)}.pdf`
+      a.download = `barcodes-${format}-${new Date().toISOString().slice(0, 10)}.pdf`
       a.click()
       URL.revokeObjectURL(url)
-      toast.success('PDF generated', 'Barcode PDF downloaded')
+      toast.success(
+        'Barcode PDF generated',
+        format === '26mm-label'
+          ? 'POSiFLOW PSF20 26mm Label PDF downloaded'
+          : 'A4 Barcode Sheet PDF downloaded'
+      )
     } catch (e) {
       toast.error('Failed to generate PDF', errMessage(e))
+    } finally {
+      setBrcGenerating(false)
+      setBrcOpen(false)
+    }
+  }
+
+  async function handlePrintLabels(productIds?: number[]) {
+    setBrcGenerating(true)
+    try {
+      const res = await window.api.devices.printBarcodeLabels({
+        productIds,
+        labelSize: '26mm',
+        silent: true,
+        copies: 1
+      })
+      if (res.success) {
+        toast.success(
+          '26mm Labels sent to POSiFLOW PSF20',
+          `Printed on ${res.printerName || 'POSiFLOW PSF20'}`
+        )
+      }
+    } catch (e) {
+      toast.error('Label print failed', errMessage(e))
     } finally {
       setBrcGenerating(false)
       setBrcOpen(false)
@@ -321,7 +350,7 @@ export function Products() {
           />
         ) : (
           <div className="overflow-hidden rounded-2xl border border-app-border bg-app-surface">
-            <div className="grid grid-cols-[minmax(0,1fr)_140px_120px_90px_120px_92px] items-center gap-3 border-b border-app-border bg-app-surface2/60 px-4 py-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_140px_120px_90px_120px_124px] items-center gap-3 border-b border-app-border bg-app-surface2/60 px-4 py-3">
               <SortHeader label="Product" k="name" />
               <span className="text-[11px] font-semibold uppercase tracking-wide text-app-faint">
                 Category
@@ -338,7 +367,7 @@ export function Products() {
               return (
                 <div
                   key={p.id}
-                  className="group grid grid-cols-[minmax(0,1fr)_140px_120px_90px_120px_92px] items-center gap-3 border-b border-app-border px-4 py-3 transition-colors last:border-b-0 hover:bg-app-surface2/40"
+                  className="group grid grid-cols-[minmax(0,1fr)_140px_120px_90px_120px_124px] items-center gap-3 border-b border-app-border px-4 py-3 transition-colors last:border-b-0 hover:bg-app-surface2/40"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-app-surface2">
@@ -365,6 +394,12 @@ export function Products() {
                   </div>
                   <span className="text-xs text-app-faint">{formatDateShort(p.updated_at)}</span>
                   <div className="flex items-center justify-end gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                    <IconButton
+                      title="Print 26mm Barcode Label (POSiFLOW PSF20)"
+                      onClick={() => void handlePrintLabels([p.id])}
+                    >
+                      <Printer style={{ width: 16, height: 16 }} />
+                    </IconButton>
                     <IconButton
                       title="Adjust stock"
                       onClick={() => setAdjusting(p)}
@@ -456,6 +491,7 @@ export function Products() {
         onClose={() => setBrcOpen(false)}
         generating={brcGenerating}
         onGenerate={handleBrcGenerate}
+        onPrintPosiflow={() => handlePrintLabels()}
       />
     </div>
   )
@@ -465,51 +501,64 @@ function BrcModal({
   open,
   onClose,
   generating,
-  onGenerate
+  onGenerate,
+  onPrintPosiflow
 }: {
   open: boolean
   onClose: () => void
   generating: boolean
-  onGenerate: () => Promise<void>
+  onGenerate: (format: '26mm-label' | 'a4-sheet') => Promise<void>
+  onPrintPosiflow: () => Promise<void>
 }) {
   return (
     <Modal
       open={open}
       onClose={onClose}
       size="lg"
-      title="Generate Barcode PDF"
-      description="Generate a PDF with all product barcodes. Products without barcodes will have one generated automatically."
+      title="POSiFLOW PSF20 · 26mm Barcode Labels & PDF"
+      description="Print 26mm barcode sticker labels directly on POSiFLOW PSF20 or download label PDF."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={generating}>
             Close
           </Button>
           <Button
-            onClick={onGenerate}
+            variant="secondary"
+            onClick={() => onGenerate('a4-sheet')}
+            disabled={generating}
+          >
+            <FileText style={{ width: 15, height: 15 }} />
+            A4 Sheet PDF
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => onGenerate('26mm-label')}
             loading={generating}
           >
-            {generating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating PDF...
-              </>
-            ) : (
-              <>
-                <FileText style={{ width: 16, height: 16 }} />
-                Generate PDF
-              </>
-            )}
+            <Download style={{ width: 15, height: 15 }} />
+            Download 26mm Label PDF
+          </Button>
+          <Button
+            onClick={onPrintPosiflow}
+            loading={generating}
+          >
+            <Printer style={{ width: 15, height: 15 }} />
+            Print 26mm Labels (POSiFLOW PSF20)
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-app-muted">
-          This will generate a PDF with all product barcodes in a 2-column layout.
-          Each barcode includes the product name, price below the barcode, and SKU.
-        </p>
+        <div className="rounded-xl border border-brand/30 bg-brand/5 p-4 text-xs text-app-muted">
+          <div className="font-semibold text-app-text">
+            POSiFLOW PSF20 · 26mm Label Configuration Active
+          </div>
+          <p className="mt-1">
+            Each label is formatted to exact <strong>26mm thermal sticker dimensions (50×26mm, 203 DPI, 0mm margin)</strong> with Product Name, high-contrast scannable Barcode, SKU, and Price.
+          </p>
+        </div>
         <p className="text-xs text-app-faint">
-          Products without barcodes will have one generated automatically.
+          Tip: You can also click the printer icon on any individual product row to print a single 26mm barcode sticker.
         </p>
       </div>
     </Modal>

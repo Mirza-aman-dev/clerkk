@@ -223,7 +223,13 @@ export async function importCsv(rows: string[][]): Promise<ImportResult> {
     const cIdx = first.findIndex((h) => h.includes('cost'))
     costIdx = cIdx >= 0 ? cIdx : null
 
-    const qIdx = first.findIndex((h) => h.includes('stock') || h.includes('qty') || h.includes('quantity'))
+    const qIdx = first.findIndex(
+      (h) =>
+        (h.includes('stock') || h.includes('qty') || h.includes('quantity')) &&
+        !h.includes('low') &&
+        !h.includes('min') &&
+        !h.includes('threshold')
+    )
     stockIdx = qIdx >= 0 ? qIdx : null
 
     const catIdx = first.findIndex((h) => h.includes('category') || h.includes('group'))
@@ -445,8 +451,10 @@ export async function generateBarcodeImage(
   return { sku, filePath }
 }
 
-// Generate barcode PDF for all products
-export async function generateBarcodesPdf(): Promise<Buffer> {
+// Generate barcode PDF for all products (supports POSiFLOW PSF20 26mm label roll or A4 sheet)
+export async function generateBarcodesPdf(
+  format: '26mm-label' | 'a4-sheet' = '26mm-label'
+): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default
   const { join } = require('path')
   const fsSync = require('fs')
@@ -474,6 +482,71 @@ export async function generateBarcodesPdf(): Promise<Buffer> {
   // PDF generation
   const regularFont = join(__dirname, 'fonts', 'DejaVuSans.ttf')
   const boldFont = join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf')
+
+  if (format === '26mm-label') {
+    // Exact POSiFLOW PSF20 26mm label dimensions: 50mm x 26mm (141.73pt x 73.70pt)
+    const labelW = 141.73
+    const labelH = 73.7
+    const doc = new PDFDocument({
+      size: [labelW, labelH],
+      margins: { top: 2, bottom: 2, left: 4, right: 4 },
+      font: regularFont
+    })
+
+    doc.registerFont('DejaVuSans', regularFont)
+    doc.registerFont('DejaVuSans-Bold', boldFont)
+
+    const chunks: Buffer[] = []
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk))
+
+    for (let i = 0; i < products2.length; i++) {
+      const product = products2[i]
+      if (i > 0) {
+        doc.addPage({
+          size: [labelW, labelH],
+          margins: { top: 2, bottom: 2, left: 4, right: 4 }
+        })
+      }
+
+      // Product Name (top)
+      doc.fontSize(7).font('DejaVuSans-Bold')
+      doc.text(product.name, 4, 3, {
+        width: labelW - 8,
+        height: 10,
+        align: 'center',
+        ellipsis: true,
+        lineBreak: false
+      })
+
+      // Barcode Image (middle)
+      if (product.barcode_image && fsSync.existsSync(product.barcode_image)) {
+        try {
+          doc.image(product.barcode_image, 8, 13, {
+            width: labelW - 16,
+            height: 44,
+            fit: [labelW - 16, 44],
+            align: 'center'
+          })
+        } catch {
+          // ignore
+        }
+      }
+
+      // Bottom row: SKU + Price
+      const priceStr = `₹${(product.price_cents / 100).toFixed(2)}`
+      doc.fontSize(6.5).font('DejaVuSans')
+      doc.text(product.sku, 5, 59, { width: 72, align: 'left', lineBreak: false })
+
+      doc.fontSize(7.5).font('DejaVuSans-Bold')
+      doc.text(priceStr, labelW - 68, 58.5, { width: 63, align: 'right', lineBreak: false })
+    }
+
+    return new Promise<Buffer>((resolve, reject) => {
+      doc.on('end', () => resolve(Buffer.concat(chunks)))
+      doc.on('error', reject)
+      doc.end()
+    })
+  }
 
   const doc = new PDFDocument({
     layout: 'landscape',

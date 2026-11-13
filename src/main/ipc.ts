@@ -18,9 +18,10 @@ import {
   listUsbScanners,
   printThermalReceipt,
   getReceiptHtml,
-  testPrint
+  testPrint,
+  printBarcodeLabels
 } from './devices'
-import type { PrintReceiptOptions, ReceiptPaperWidth } from '../shared/types'
+import type { PrintLabelsOptions, PrintReceiptOptions, ReceiptPaperWidth } from '../shared/types'
 
 function parentOf(event: Electron.IpcMainInvokeEvent): BrowserWindow {
   return BrowserWindow.fromWebContents(event.sender) as BrowserWindow
@@ -87,8 +88,8 @@ export function registerIpc(): void {
       return await productsRepo.generateBarcodeImage(productName, priceCents, existingSku)
     }
   )
-  ipcMain.handle('products:generateBarcodesPdf', async () => {
-    return await productsRepo.generateBarcodesPdf()
+  ipcMain.handle('products:generateBarcodesPdf', async (_e, format?: '26mm-label' | 'a4-sheet') => {
+    return await productsRepo.generateBarcodesPdf(format)
   })
 
   ipcMain.handle('devices:listPrinters', (e) => listPrinters(e.sender))
@@ -103,6 +104,9 @@ export function registerIpc(): void {
     'devices:testPrint',
     (_e, deviceName?: string | null, paperWidth?: ReceiptPaperWidth) =>
       testPrint(deviceName, paperWidth)
+  )
+  ipcMain.handle('devices:printBarcodeLabels', (_e, options: PrintLabelsOptions) =>
+    printBarcodeLabels(options)
   )
 
   ipcMain.handle('customers:list', (_e, search?: string) => customersRepo.listCustomers(search))

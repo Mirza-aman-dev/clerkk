@@ -106,7 +106,15 @@ export interface ActivityEntry {
   created_at: string
 }
 
-export type ReceiptPaperWidth = '80mm' | '58mm' | 'A5'
+export type ReceiptPaperWidth = '26mm' | '26mm-narrow' | '58mm' | '80mm' | 'A5'
+
+export interface PrintLabelsOptions {
+  productIds?: number[]
+  deviceName?: string | null
+  labelSize?: '26mm' | '26mm-narrow'
+  copies?: number
+  silent?: boolean
+}
 
 export interface PrinterDeviceInfo {
   name: string
@@ -219,7 +227,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   invoice_prefix: 'INV',
   low_stock_default: 5,
   printer_device_name: null,
-  receipt_paper_width: '80mm',
+  receipt_paper_width: '26mm',
   usb_scanner_enabled: true,
   scanner_sound: true
 }
@@ -282,7 +290,7 @@ export interface ClerkkApi {
       priceCents?: number,
       existingSku?: string
     ) => Promise<{ sku: string; filePath: string }>
-    generateBarcodesPdf: () => Promise<Buffer>
+    generateBarcodesPdf: (format?: '26mm-label' | 'a4-sheet') => Promise<Buffer>
   }
   customers: {
     list: (search?: string) => Promise<Customer[]>
@@ -324,6 +332,9 @@ export interface ClerkkApi {
     testPrint: (
       deviceName?: string | null,
       paperWidth?: ReceiptPaperWidth
+    ) => Promise<{ success: boolean; printerName: string; error?: string }>
+    printBarcodeLabels: (
+      options: PrintLabelsOptions
     ) => Promise<{ success: boolean; printerName: string; error?: string }>
   }
   db: {

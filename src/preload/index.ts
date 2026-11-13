@@ -28,7 +28,7 @@ const api: ClerkkApi = {
     exportCsv: () => ipcRenderer.invoke('products:exportCsv'),
     generateBarcodeImage: (productName: string, priceCents?: number, existingSku?: string) =>
       ipcRenderer.invoke('products:generateBarcodeImage', productName, priceCents, existingSku),
-    generateBarcodesPdf: () => ipcRenderer.invoke('products:generateBarcodesPdf')
+    generateBarcodesPdf: (format) => ipcRenderer.invoke('products:generateBarcodesPdf', format)
   },
   devices: {
     listPrinters: () => ipcRenderer.invoke('devices:listPrinters'),
@@ -37,7 +37,8 @@ const api: ClerkkApi = {
     getReceiptHtml: (saleId, paperWidth) =>
       ipcRenderer.invoke('devices:getReceiptHtml', saleId, paperWidth),
     testPrint: (deviceName, paperWidth) =>
-      ipcRenderer.invoke('devices:testPrint', deviceName, paperWidth)
+      ipcRenderer.invoke('devices:testPrint', deviceName, paperWidth),
+    printBarcodeLabels: (options) => ipcRenderer.invoke('devices:printBarcodeLabels', options)
   },
   customers: {
     list: (search) => ipcRenderer.invoke('customers:list', search),

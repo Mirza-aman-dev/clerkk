@@ -390,15 +390,17 @@ function PreferencesPanel({ settings }: { settings: AppSettings | null }) {
           )}
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Receipt paper roll width">
+            <Field label="Default Paper / Label Size (POSiFLOW PSF20)">
               <Select
-                value={settings?.receipt_paper_width ?? '80mm'}
+                value={settings?.receipt_paper_width ?? '26mm'}
                 onChange={(e) =>
                   void update({ receipt_paper_width: e.target.value as ReceiptPaperWidth })
                 }
               >
-                <option value="80mm">80mm Thermal Roll (Standard 3&quot; POS)</option>
-                <option value="58mm">58mm Thermal Roll (Small 2&quot; Mini Bill)</option>
+                <option value="26mm">26mm Label — POSiFLOW PSF20 (50×26mm Default)</option>
+                <option value="26mm-narrow">26mm Narrow Roll — POSiFLOW PSF20 (26mm Width)</option>
+                <option value="58mm">58mm Thermal Roll (2&quot; Continuous Roll)</option>
+                <option value="80mm">80mm Thermal Roll (3&quot; Standard POS)</option>
                 <option value="A5">A5 Standard Counter Sheet</option>
               </Select>
             </Field>
@@ -412,7 +414,7 @@ function PreferencesPanel({ settings }: { settings: AppSettings | null }) {
                   try {
                     const res = await window.api.devices.testPrint(
                       settings?.printer_device_name ?? null,
-                      settings?.receipt_paper_width ?? '80mm'
+                      settings?.receipt_paper_width ?? '26mm'
                     )
                     if (res.success) {
                       toast.success('Test bill printed', `Sent to ${res.printerName}`)
