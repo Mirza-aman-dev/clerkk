@@ -397,6 +397,7 @@ function PreferencesPanel({ settings }: { settings: AppSettings | null }) {
                   void update({ receipt_paper_width: e.target.value as ReceiptPaperWidth })
                 }
               >
+                <option value="25mm">25mm Label — POSiFLOW PSF20 (50×25mm Sticker)</option>
                 <option value="26mm">26mm Label — POSiFLOW PSF20 (50×26mm Default)</option>
                 <option value="26mm-narrow">26mm Narrow Roll — POSiFLOW PSF20 (26mm Width)</option>
                 <option value="58mm">58mm Thermal Roll (2&quot; Continuous Roll)</option>

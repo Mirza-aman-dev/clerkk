@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   Printer,
+  ScanBarcode,
   Search,
   Trash2,
   Upload
@@ -29,6 +30,7 @@ import {
   Toggle
 } from '../../components/ui'
 import { ProductModal } from './ProductModal'
+import { PrintBarcodeModal } from '../../components/PrintBarcodeModal'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useMoney } from '../../hooks/useMoney'
 import { useUi } from '../../stores/ui'
@@ -68,6 +70,7 @@ export function Products() {
   const [modalOpen, setModalOpen] = useState(false)
   const [adjusting, setAdjusting] = useState<Product | null>(null)
   const [deleting, setDeleting] = useState<Product | null>(null)
+  const [printingBarcode, setPrintingBarcode] = useState<Product | null>(null)
   const [importOpen, setImportOpen] = useState(false)
   const [brcOpen, setBrcOpen] = useState(false)
   const [brcGenerating, setBrcGenerating] = useState(false)
@@ -393,12 +396,14 @@ export function Products() {
                     {low && <Badge variant="danger">Low</Badge>}
                   </div>
                   <span className="text-xs text-app-faint">{formatDateShort(p.updated_at)}</span>
-                  <div className="flex items-center justify-end gap-0.5 opacity-60 transition-opacity group-hover:opacity-100">
+                  <div className="flex items-center justify-end gap-0.5 opacity-80 transition-opacity group-hover:opacity-100">
                     <IconButton
-                      title="Print 26mm Barcode Label (POSiFLOW PSF20)"
-                      onClick={() => void handlePrintLabels([p.id])}
+                      title="Print barcode"
+                      aria-label="Print barcode"
+                      className="text-brand hover:bg-brand/10 hover:text-brand"
+                      onClick={() => setPrintingBarcode(p)}
                     >
-                      <Printer style={{ width: 16, height: 16 }} />
+                      <ScanBarcode style={{ width: 17, height: 17 }} />
                     </IconButton>
                     <IconButton
                       title="Adjust stock"
@@ -443,6 +448,11 @@ export function Products() {
       />
 
       <StockAdjust adjusting={adjusting} onClose={() => setAdjusting(null)} onSaved={products.reload} />
+
+      <PrintBarcodeModal
+        product={printingBarcode}
+        onClose={() => setPrintingBarcode(null)}
+      />
 
       <ConfirmDialog
         open={!!deleting}

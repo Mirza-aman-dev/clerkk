@@ -438,13 +438,11 @@ export function buildThermalReceiptHtml(
   const currency = settings.currency || 'INR'
   const money = (cents: number) => formatCurrency(cents, currency)
 
-  // Dedicated POSiFLOW PSF20 26mm Label Layout (50mm x 26mm die-cut label or 26mm narrow roll)
-  if (paperWidth === '26mm' || paperWidth === '26mm-narrow') {
+  // Dedicated POSiFLOW PSF20 25-26mm Label Layout (50mm x 25-26mm die-cut label or 26mm narrow roll)
+  if (paperWidth === '25mm' || paperWidth === '26mm' || paperWidth === '26mm-narrow') {
     const isNarrowWidth = paperWidth === '26mm-narrow'
-    // POSiFLOW PSF20: 203 DPI (8 dots/mm).
-    // '26mm' = standard POSiFLOW PSF20 26mm height label (48mm printable width x 26mm height per label)
-    // '26mm-narrow' = 26mm width narrow roll (24mm printable width x auto height)
-    const pageSizeCss = isNarrowWidth ? '26mm auto' : '50mm 26mm'
+    const heightMm = paperWidth === '25mm' ? '25mm' : '26mm'
+    const pageSizeCss = isNarrowWidth ? '26mm auto' : `50mm ${heightMm}`
     const containerWidth = isNarrowWidth ? '24mm' : '48mm'
     const baseFont = isNarrowWidth ? '7.5px' : '8.5px'
     const titleFont = isNarrowWidth ? '9px' : '10.5px'
@@ -822,6 +820,10 @@ function getMicronPageSize(
   paperWidth?: ReceiptPaperWidth
 ): { width: number; height: number } | undefined {
   // 1 mm = 1000 microns
+  if (paperWidth === '25mm') {
+    // POSiFLOW PSF20 50mm x 25mm label
+    return { width: 50000, height: 25000 }
+  }
   if (paperWidth === '26mm') {
     // POSiFLOW PSF20 50mm x 26mm label
     return { width: 50000, height: 26000 }
@@ -1082,21 +1084,21 @@ export async function testPrint(
   return printHtmlInHiddenWindow(html, target, true, 1, width)
 }
 
-/**
- * Prints 26mm barcode sticker labels directly onto the POSiFLOW PSF20 thermal label printer.
- */
-export async function printBarcodeLabels(
-  options: PrintLabelsOptions
-): Promise<{ success: boolean; printerName: string }> {
+async function buildBarcodeLabelsHtml(
+  productIds?: number[],
+  labelSize: '25mm' | '26mm' | '26mm-narrow' = '25mm',
+  copiesPerProduct = 1
+): Promise<{ html: string; totalStickers: number }> {
   const settings = getSettings()
   const currency = settings.currency || 'INR'
   const money = (cents: number) => formatCurrency(cents, currency)
-  const labelSize = options.labelSize || '26mm'
   const isNarrow = labelSize === '26mm-narrow'
+  const labelHeightMm = labelSize === '25mm' ? 25 : 26
+  const copiesCount = Math.max(1, Math.min(500, Math.floor(copiesPerProduct || 1)))
 
   const products =
-    options.productIds && options.productIds.length > 0
-      ? options.productIds
+    productIds && productIds.length > 0
+      ? productIds
           .map((id) => getProduct(id))
           .filter((p): p is NonNullable<typeof p> => Boolean(p))
       : listProducts()
@@ -1115,31 +1117,34 @@ export async function printBarcodeLabels(
     const b64 = existsSync(imgPath) ? readFileSync(imgPath).toString('base64') : ''
     const dataUri = b64 ? `data:image/png;base64,${b64}` : ''
 
-    labelBlocks.push(`
+    const stickerHtml = `
       <div class="sticker">
-        <div class="shop-hdr">${escapeHtml(settings.business_name || 'Clerkk Jewellery')}</div>
         <div class="prod-name">${escapeHtml(product.name)}</div>
         ${
           dataUri
             ? `<div class="brc-wrap"><img src="${dataUri}" class="brc-img" alt="${escapeHtml(product.sku)}" /></div>`
             : `<div class="sku-fallback">${escapeHtml(product.sku)}</div>`
         }
-        <div class="btm-row">
-          <span class="sku-txt">${escapeHtml(product.sku)}</span>
+        <div class="price-row">
           <span class="price-txt">${escapeHtml(money(product.price_cents))}</span>
         </div>
       </div>
-    `)
+    `
+    // Repeat the sticker block exact `copiesCount` times so the thermal printer feeds & prints every copy reliably
+    for (let c = 0; c < copiesCount; c++) {
+      labelBlocks.push(stickerHtml)
+    }
   }
 
-  const pageSizeCss = isNarrow ? '26mm 26mm' : '50mm 26mm'
-  const stickerWidth = isNarrow ? '25mm' : '48mm'
+  const pageSizeCss = isNarrow ? `26mm ${labelHeightMm}mm` : `50mm ${labelHeightMm}mm`
+  const stickerWidth = isNarrow ? '24.5mm' : '48mm'
+  const stickerHeight = `${(labelHeightMm - 0.8).toFixed(1)}mm`
 
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>POSiFLOW PSF20 26mm Barcode Labels</title>
+  <title>POSiFLOW PSF20 ${labelHeightMm}mm Barcode Labels</title>
   <style>
     @page {
       size: ${pageSizeCss};
@@ -1161,7 +1166,7 @@ export async function printBarcodeLabels(
     }
     .sticker {
       width: ${stickerWidth};
-      height: 25.2mm;
+      height: ${stickerHeight};
       margin: 0 auto;
       padding: 0.8mm 1.2mm;
       display: flex;
@@ -1171,35 +1176,27 @@ export async function printBarcodeLabels(
       text-align: center;
       page-break-after: always;
       break-after: page;
+      page-break-inside: avoid;
+      break-inside: avoid;
       overflow: hidden;
     }
     .sticker:last-child {
       page-break-after: auto;
       break-after: auto;
     }
-    .shop-hdr {
-      font-size: 7px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 0.4px;
-      line-height: 1;
-      max-width: 100%;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
     .prod-name {
-      font-size: 8.5px;
-      font-weight: 800;
+      font-size: 9.5px;
+      font-weight: 900;
       line-height: 1.1;
       max-width: 100%;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      letter-spacing: 0.1px;
     }
     .brc-wrap {
       width: 100%;
-      height: 12.5mm;
+      height: 14mm;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1207,27 +1204,29 @@ export async function printBarcodeLabels(
     }
     .brc-img {
       max-width: 96%;
-      max-height: 12mm;
+      max-height: 13.6mm;
       object-fit: contain;
       image-rendering: pixelated;
     }
-    .btm-row {
+    .sku-fallback {
+      font-family: 'Consolas', monospace;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3mm 0;
+    }
+    .price-row {
       width: 100%;
       display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      border-top: 0.5px solid #000;
+      justify-content: center;
+      align-items: center;
+      border-top: 0.6px solid #000;
       padding-top: 0.4mm;
-      line-height: 1;
-    }
-    .sku-txt {
-      font-family: 'Consolas', monospace;
-      font-size: 7.5px;
-      font-weight: 700;
+      line-height: 1.05;
     }
     .price-txt {
-      font-size: 9.5px;
+      font-size: 10.5px;
       font-weight: 900;
+      letter-spacing: 0.2px;
     }
   </style>
 </head>
@@ -1236,19 +1235,47 @@ export async function printBarcodeLabels(
 </body>
 </html>`
 
+  return { html, totalStickers: labelBlocks.length }
+}
+
+export async function getBarcodeLabelHtml(
+  productId: number,
+  labelSize: '25mm' | '26mm' | '26mm-narrow' = '25mm'
+): Promise<string> {
+  const { html } = await buildBarcodeLabelsHtml([productId], labelSize, 1)
+  return html
+}
+
+/**
+ * Prints 25-26mm barcode sticker labels directly onto the POSiFLOW PSF20 thermal label printer.
+ */
+export async function printBarcodeLabels(
+  options: PrintLabelsOptions
+): Promise<{ success: boolean; printerName: string }> {
+  const settings = getSettings()
+  const labelSize = options.labelSize || '25mm'
+  const copies = Math.max(1, Math.min(500, Math.floor(options.copies ?? 1)))
+
+  const { html, totalStickers } = await buildBarcodeLabelsHtml(
+    options.productIds,
+    labelSize,
+    copies
+  )
+
   const target =
     options.deviceName !== undefined ? options.deviceName : settings.printer_device_name
+  // Pass copies=1 to printHtmlInHiddenWindow because the HTML document already contains `copies` distinct pages
   const res = await printHtmlInHiddenWindow(
     html,
     target,
     options.silent ?? true,
-    options.copies ?? 1,
-    isNarrow ? '26mm-narrow' : '26mm'
+    1,
+    labelSize === '26mm-narrow' ? '26mm-narrow' : labelSize === '25mm' ? '25mm' : '26mm'
   )
   if (res.success) {
     logActivity(
       'labels.print',
-      `Printed ${products.length} 26mm barcode label(s) on ${res.printerName}`
+      `Printed ${totalStickers} (${labelSize}) barcode label(s) on ${res.printerName}`
     )
   }
   return res

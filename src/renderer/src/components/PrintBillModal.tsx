@@ -330,9 +330,10 @@ export function PrintBillModal() {
               <label className="mb-1.5 block text-xs font-medium text-app-muted">
                 Paper / Label Size (POSiFLOW PSF20 Default: 26mm Label)
               </label>
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-6">
                 {(
                   [
+                    { id: '25mm', label: '25mm Label', sub: 'PSF20 (50×25)' },
                     { id: '26mm', label: '26mm Label', sub: 'PSF20 (50×26)' },
                     { id: '26mm-narrow', label: '26mm Narrow', sub: '26mm Tag Roll' },
                     { id: '58mm', label: '58mm Roll', sub: '2" Continuous' },

@@ -106,12 +106,12 @@ export interface ActivityEntry {
   created_at: string
 }
 
-export type ReceiptPaperWidth = '26mm' | '26mm-narrow' | '58mm' | '80mm' | 'A5'
+export type ReceiptPaperWidth = '25mm' | '26mm' | '26mm-narrow' | '58mm' | '80mm' | 'A5'
 
 export interface PrintLabelsOptions {
   productIds?: number[]
   deviceName?: string | null
-  labelSize?: '26mm' | '26mm-narrow'
+  labelSize?: '25mm' | '26mm' | '26mm-narrow'
   copies?: number
   silent?: boolean
 }
@@ -336,6 +336,10 @@ export interface ClerkkApi {
     printBarcodeLabels: (
       options: PrintLabelsOptions
     ) => Promise<{ success: boolean; printerName: string; error?: string }>
+    getBarcodeLabelHtml: (
+      productId: number,
+      labelSize?: '25mm' | '26mm' | '26mm-narrow'
+    ) => Promise<string>
   }
   db: {
     clearAll: () => Promise<void>

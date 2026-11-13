@@ -19,7 +19,8 @@ import {
   printThermalReceipt,
   getReceiptHtml,
   testPrint,
-  printBarcodeLabels
+  printBarcodeLabels,
+  getBarcodeLabelHtml
 } from './devices'
 import type { PrintLabelsOptions, PrintReceiptOptions, ReceiptPaperWidth } from '../shared/types'
 
@@ -107,6 +108,11 @@ export function registerIpc(): void {
   )
   ipcMain.handle('devices:printBarcodeLabels', (_e, options: PrintLabelsOptions) =>
     printBarcodeLabels(options)
+  )
+  ipcMain.handle(
+    'devices:getBarcodeLabelHtml',
+    (_e, productId: number, labelSize?: '25mm' | '26mm' | '26mm-narrow') =>
+      getBarcodeLabelHtml(productId, labelSize)
   )
 
   ipcMain.handle('customers:list', (_e, search?: string) => customersRepo.listCustomers(search))
