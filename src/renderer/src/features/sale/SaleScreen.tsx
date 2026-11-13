@@ -4,6 +4,8 @@ import {
   Package,
   Phone,
   Plus,
+  Printer,
+  ScanBarcode,
   ScanLine,
   Search,
   ShoppingCart,
@@ -14,6 +16,8 @@ import {
 import { Badge, Button, ConfirmDialog, EmptyState, Input, Select } from '../../components/ui'
 import { InvoicePreview } from '../../components/InvoicePreview'
 import { useCart, cartSubtotal, cartCount, cartKey, type CartLine } from '../../stores/cart'
+import { useScanner } from '../../stores/scanner'
+import { useUi } from '../../stores/ui'
 import { useAsyncData } from '../../hooks/useAsyncData'
 import { useMoney } from '../../hooks/useMoney'
 import { useSettings } from '../../stores/settings'
@@ -48,8 +52,16 @@ export function SaleScreen() {
   const [notes, setNotes] = useState('')
 
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [printAfterComplete, setPrintAfterComplete] = useState(false)
   const [busy, setBusy] = useState(false)
   const [completedSale, setCompletedSale] = useState<Sale | null>(null)
+
+  const usbScanners = useScanner((s) => s.usbScanners)
+  const lastCode = useScanner((s) => s.lastCode)
+  const lastCodeAt = useScanner((s) => s.lastCodeAt)
+  const lastScannedProductName = useScanner((s) => s.lastScannedProductName)
+  const reportScan = useScanner((s) => s.reportScan)
+  const openPrintModal = useUi((s) => s.openPrintModal)
 
   const subtotal = useMemo(() => cartSubtotal(lines), [lines])
   const tax = taxFromSubtotal(subtotal, taxRate)
@@ -83,6 +95,29 @@ export function SaleScreen() {
       stock: p.stock
     })
     if (res === 'out-of-stock') toast.warning('Out of stock', `"${p.name}" has no available stock`)
+  }
+
+  async function handleSearchEnter() {
+    const q = search.trim()
+    if (!q) return
+    try {
+      const exact = await window.api.products.bySku(q)
+      if (exact) {
+        reportScan(exact.sku, 'manual', exact.name)
+        addLine(exact)
+        setSearch('')
+        toast.success('Added by barcode', `${exact.name} (${exact.sku})`)
+        return
+      }
+      if (products.data && products.data.length === 1) {
+        const only = products.data[0]
+        addLine(only)
+        setSearch('')
+        toast.success('Added to cart', only.name)
+      }
+    } catch {
+      // ignore
+    }
   }
 
   async function completeSale() {
@@ -124,10 +159,15 @@ export function SaleScreen() {
       setNotes('')
       setPayment('cash')
       setConfirmOpen(false)
-      setCompletedSale(sale)
+      if (printAfterComplete) {
+        setPrintAfterComplete(false)
+        openPrintModal(sale.id)
+      } else {
+        setCompletedSale(sale)
+      }
       toast.success('Sale completed', `${sale.invoice_number} · ${fmt(sale.total_cents)}`, {
-        label: 'Print again',
-        onClick: () => void window.api.pdf.printInvoice(sale.id)
+        label: 'Print Bill',
+        onClick: () => openPrintModal(sale.id)
       })
     } catch (e) {
       toast.error('Sale failed', errMessage(e))
@@ -140,7 +180,7 @@ export function SaleScreen() {
     <div className="flex h-full">
       {/* Left: browse & add */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center gap-3 border-b border-app-border px-6 py-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-app-border px-6 py-4">
           <div className="relative max-w-md flex-1">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-app-faint"
@@ -149,13 +189,35 @@ export function SaleScreen() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products to add…"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void handleSearchEnter()
+                }
+              }}
+              placeholder="Search products or scan barcode gun…"
               className="pl-9"
             />
           </div>
-          <div className="ml-auto flex items-center gap-2 text-app-faint">
-            <ScanLine className="text-brand" style={{ width: 16, height: 16 }} />
-            <span className="text-xs">Scan a barcode to add automatically</span>
+          <div className="ml-auto flex items-center gap-2 rounded-xl border border-app-border bg-app-surface2/60 px-3 py-2 text-xs">
+            <ScanBarcode className="text-emerald-500" style={{ width: 16, height: 16 }} />
+            {lastCode && Date.now() - lastCodeAt < 15000 ? (
+              <span className="text-app-text">
+                Scanned:{' '}
+                <strong className="font-semibold text-emerald-500">
+                  {lastScannedProductName || 'Not found'}
+                </strong>{' '}
+                <span className="font-mono text-[11px] text-app-faint">({lastCode})</span>
+              </span>
+            ) : usbScanners.length > 0 ? (
+              <span className="text-app-muted">
+                <strong className="text-emerald-500">{usbScanners[0].name}</strong> connected — trigger gun to add
+              </span>
+            ) : (
+              <span className="text-app-muted">
+                USB Barcode Gun Ready — trigger gun anywhere to add product
+              </span>
+            )}
           </div>
         </div>
 
@@ -342,14 +404,30 @@ export function SaleScreen() {
               </span>
             </div>
           </div>
-          <Button
-            className="mt-3 w-full"
-            size="lg"
-            disabled={!lines.length}
-            onClick={() => setConfirmOpen(true)}
-          >
-            Complete Sale
-          </Button>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Button
+              variant="secondary"
+              size="lg"
+              disabled={!lines.length}
+              onClick={() => {
+                setPrintAfterComplete(false)
+                setConfirmOpen(true)
+              }}
+            >
+              Complete Sale
+            </Button>
+            <Button
+              size="lg"
+              disabled={!lines.length}
+              onClick={() => {
+                setPrintAfterComplete(true)
+                setConfirmOpen(true)
+              }}
+            >
+              <Printer style={{ width: 16, height: 16 }} />
+              Complete & Print
+            </Button>
+          </div>
         </div>
       </aside>
 

@@ -10,6 +10,9 @@ interface UiState {
   reportTick: number
   requestReport: () => void
   consumeReportTick: () => void
+  printingSaleId: number | null
+  openPrintModal: (saleId: number) => void
+  closePrintModal: () => void
 }
 
 export const useUi = create<UiState>((set) => ({
@@ -22,4 +25,7 @@ export const useUi = create<UiState>((set) => ({
   reportTick: 0,
   requestReport: () => set((s) => ({ reportTick: s.reportTick + 1 })),
   consumeReportTick: () => set({ reportTick: 0 }),
+  printingSaleId: null,
+  openPrintModal: (saleId) => set({ printingSaleId: saleId }),
+  closePrintModal: () => set({ printingSaleId: null })
 }))

@@ -1,6 +1,6 @@
 {
   "name": "clerkk",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "Premium desktop Inventory Management + Barcode POS",
   "main": "./out/main/index.js",
   "author": "Clerkk",
@@ -14,7 +14,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "postinstall": "electron-builder install-app-deps",
-    "build:win": "electron-vite build && electron-builder --win",
+    "build:win": "electron-vite build && electron-builder --win --x64",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "dist": "electron-vite build && electron-builder"

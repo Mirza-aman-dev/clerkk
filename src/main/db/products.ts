@@ -51,10 +51,36 @@ export function getProduct(id: number): Product | null {
 }
 
 export function bySku(sku: string): Product | null {
-  const row = getDb()
+  const clean = sku.replace(/[\x00-\x1F\x7F]/g, '').trim()
+  if (!clean) return null
+  const db = getDb()
+
+  // 1. Exact match
+  let row = db
     .prepare(`${PRODUCT_SELECT} WHERE p.sku = ? AND p.is_deleted = 0`)
-    .get(sku.trim()) as Record<string, unknown> | undefined
-  return row ? mapProduct(row) : null
+    .get(clean) as Record<string, unknown> | undefined
+  if (row) return mapProduct(row)
+
+  // 2. Case-insensitive match
+  row = db
+    .prepare(`${PRODUCT_SELECT} WHERE LOWER(p.sku) = LOWER(?) AND p.is_deleted = 0`)
+    .get(clean) as Record<string, unknown> | undefined
+  if (row) return mapProduct(row)
+
+  // 3. EAN-13 / UPC-A leading zero normalization (some USB barcode guns strip or add leading 0)
+  if (/^\d{12}$/.test(clean)) {
+    row = db
+      .prepare(`${PRODUCT_SELECT} WHERE p.sku = ? AND p.is_deleted = 0`)
+      .get('0' + clean) as Record<string, unknown> | undefined
+    if (row) return mapProduct(row)
+  } else if (/^0\d{12}$/.test(clean)) {
+    row = db
+      .prepare(`${PRODUCT_SELECT} WHERE p.sku = ? AND p.is_deleted = 0`)
+      .get(clean.slice(1)) as Record<string, unknown> | undefined
+    if (row) return mapProduct(row)
+  }
+
+  return null
 }
 
 function assertValid(input: ProductInput): void {
@@ -75,10 +101,12 @@ function applyProduct(
     | { id: number }
     | undefined
   if (dup) throw new Error(`SKU/barcode "${sku}" already exists`)
+  const existing = getProduct(id)
+  const barcodeImage = input.barcode_image !== undefined ? input.barcode_image : (existing?.barcode_image ?? null)
   db.prepare(
     `UPDATE products SET
       name = ?, sku = ?, price_cents = ?, cost_cents = ?, stock = ?,
-      low_stock_threshold = ?, category_id = ?, image = ?, description = ?, updated_at = ?
+      low_stock_threshold = ?, category_id = ?, image = ?, barcode_image = ?, description = ?, updated_at = ?
      WHERE id = ?`
   ).run(
     name,
@@ -89,6 +117,7 @@ function applyProduct(
     input.low_stock_threshold ?? 5,
     input.category_id ?? null,
     input.image ?? null,
+    barcodeImage,
     input.description ?? null,
     now(),
     id
@@ -109,8 +138,8 @@ export function createProduct(input: ProductInput): Product {
   const info = db
     .prepare(
       `INSERT INTO products
-        (name, sku, price_cents, cost_cents, stock, low_stock_threshold, category_id, image, description, created_at, updated_at, is_deleted)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
+        (name, sku, price_cents, cost_cents, stock, low_stock_threshold, category_id, image, barcode_image, description, created_at, updated_at, is_deleted)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`
     )
     .run(
       name,
@@ -121,6 +150,7 @@ export function createProduct(input: ProductInput): Product {
       input.low_stock_threshold ?? 5,
       input.category_id ?? null,
       input.image ?? null,
+      input.barcode_image ?? null,
       input.description ?? null,
       now(),
       now()
@@ -347,46 +377,71 @@ async function getBarcodeFolder(): Promise<string> {
   return fallback
 }
 
-// Generate EAN-13 barcode image and save to folder
-export async function generateBarcodeImage(productName: string, priceCents?: number): Promise<{ sku: string; filePath: string }> {
+// Generate EAN-13 or Code128 barcode image and save to folder
+export async function generateBarcodeImage(
+  productName: string,
+  priceCents?: number,
+  existingSku?: string
+): Promise<{ sku: string; filePath: string }> {
   const db = getDb()
-  
-  // Generate unique SKU (EAN-13)
-  let sku = ''
-  for (let i = 0; i < 100; i++) {
-    const base = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join('')
-    const checkDigit = ean13CheckDigit(base)
-    sku = base + checkDigit
-    const exists = db.prepare('SELECT 1 FROM products WHERE sku = ?').get(sku)
-    if (!exists) break
-  }
+
+  let sku = existingSku?.trim() || ''
   if (!sku) {
-    // fallback: timestamp-based unique code
-    const t = Date.now().toString().padStart(13, '0').slice(-13)
-    sku = t.slice(0, 12) + ean13CheckDigit(t.slice(0, 12))
+    // Generate unique SKU (EAN-13)
+    for (let i = 0; i < 100; i++) {
+      const base = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10)).join('')
+      const checkDigit = ean13CheckDigit(base)
+      sku = base + checkDigit
+      const exists = db.prepare('SELECT 1 FROM products WHERE sku = ?').get(sku)
+      if (!exists) break
+    }
+    if (!sku) {
+      // fallback: timestamp-based unique code
+      const t = Date.now().toString().padStart(13, '0').slice(-13)
+      sku = t.slice(0, 12) + ean13CheckDigit(t.slice(0, 12))
+    }
   }
 
-  // Generate barcode image using bwip-js
-  const pngBuffer = await bwipjs.toBuffer({
-    bcid: 'ean13',
-    text: sku,
-    scale: 3,
-    height: 10,
-    includetext: true,
-    textxalign: 'center',
-    textfont: 'DejaVuSans',
-    textsize: 12
-  })
+  // Use ean13 if sku is valid 12-digit or 13-digit EAN-13; otherwise fallback to code128
+  const isValidEan13 =
+    /^\d{12}$/.test(sku) ||
+    (/^\d{13}$/.test(sku) && sku[12] === ean13CheckDigit(sku.slice(0, 12)))
+
+  let pngBuffer: Buffer
+  try {
+    pngBuffer = await bwipjs.toBuffer({
+      bcid: isValidEan13 ? 'ean13' : 'code128',
+      text: sku,
+      scale: 3,
+      height: 10,
+      includetext: true,
+      textxalign: 'center',
+      textfont: 'DejaVuSans',
+      textsize: 12
+    })
+  } catch {
+    pngBuffer = await bwipjs.toBuffer({
+      bcid: 'code128',
+      text: sku,
+      scale: 3,
+      height: 10,
+      includetext: true,
+      textxalign: 'center',
+      textfont: 'DejaVuSans',
+      textsize: 12
+    })
+  }
 
   // Save barcode image
   const folder = await getBarcodeFolder()
-  const safeName = productName.replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_')
-  const priceStr = priceCents ? `_₹${(priceCents / 100).toFixed(2).replace('.', '-')}` : ''
-  const fileName = `${safeName}${priceStr}_${sku}.png`
+  const safeName = (productName.replace(/[^a-zA-Z0-9\s-]/g, '').trim().replace(/\s+/g, '_') || 'product').slice(0, 48)
+  const priceStr = priceCents ? `_Rs${(priceCents / 100).toFixed(2).replace('.', '-')}` : ''
+  const safeSku = sku.replace(/[^a-zA-Z0-9_-]/g, '')
+  const fileName = `${safeName}${priceStr}_${safeSku}.png`
   const filePath = join(folder, fileName)
-  
+
   await fs.writeFile(filePath, pngBuffer)
-  
+
   return { sku, filePath }
 }
 
@@ -394,99 +449,92 @@ export async function generateBarcodeImage(productName: string, priceCents?: num
 export async function generateBarcodesPdf(): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default
   const { join } = require('path')
-  
+  const fsSync = require('fs')
+
   const products = listProducts({ sort: 'name', dir: 'asc' })
-  
-  // Generate missing barcodes
+
+  // Generate missing or deleted barcode images using each product's existing SKU
   for (const product of products) {
-    if (!product.barcode_image) {
+    const fileExists = product.barcode_image ? fsSync.existsSync(product.barcode_image) : false
+    if (!product.barcode_image || !fileExists) {
       try {
-        const result = await generateBarcodeImage(product.name, product.price_cents)
-        // Update product with barcode image path
-        getDb().prepare('UPDATE products SET barcode_image = ? WHERE id = ?').run(result.filePath, product.id)
+        const result = await generateBarcodeImage(product.name, product.price_cents, product.sku)
+        getDb()
+          .prepare('UPDATE products SET barcode_image = ? WHERE id = ?')
+          .run(result.filePath, product.id)
       } catch (e) {
         console.error(`Failed to generate barcode for ${product.name}:`, e)
       }
     }
   }
-  
+
   // Reload products with updated barcode images
   const products2 = listProducts({ sort: 'name', dir: 'asc' })
-  
+
   // PDF generation
   const regularFont = join(__dirname, 'fonts', 'DejaVuSans.ttf')
   const boldFont = join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf')
 
-  const doc = new PDFDocument({ 
+  const doc = new PDFDocument({
     layout: 'landscape',
     margins: { top: 40, bottom: 40, left: 40, right: 40 },
     font: regularFont
   })
-  
+
   // Register DejaVu fonts
   doc.registerFont('DejaVuSans', regularFont)
   doc.registerFont('DejaVuSans-Bold', boldFont)
-  
+
   const chunks: Buffer[] = []
   doc.on('data', (chunk: Buffer) => chunks.push(chunk))
-  
-  const margin = 40
-  const cardWidth = 200
-  const cardHeight = 200
-  
+
   let y = 40
-  
+
   for (let i = 0; i < products2.length; i++) {
     const product = products2[i]
-    
-    if (i > 0 && i % 2 === 0) {
-      y += 230
-      
+
+    if (i > 0 && i % 3 === 0) {
+      y += 220
+
       // Check if we need new page
-      if (y + 200 > doc.page.height - 40) {
+      if (y + 195 > doc.page.height - 40) {
         doc.addPage()
         y = 40
       }
     }
-    
-    const col = i % 2
-    const cardX = 40 + (col * 210)
-    const cardY = y
-    const cardWidth = 200
-    const cardHeight = 200
-    
+
+    const col = i % 3
+    const cardX = 40 + col * 235
+
     // Draw border
-    doc.rect(col * 210 + 40, y, 200, 200).stroke()
-    
+    doc.rect(cardX, y, 220, 195).stroke()
+
     // Product name
-    doc.fontSize(12).font('DejaVuSans-Bold')
-    doc.text(product.name, 40 + (col * 210) + 10, y + 10, { width: 180 })
-    
+    doc.fontSize(11).font('DejaVuSans-Bold')
+    doc.text(product.name, cardX + 10, y + 10, { width: 200, height: 28, ellipsis: true })
+
     // Barcode
     if (product.barcode_image) {
       try {
-        const fs = require('fs')
-        if (fs.existsSync(product.barcode_image)) {
-          doc.image(product.barcode_image, 40 + (col * 210) + 10, y + 40, { width: 180 })
+        if (fsSync.existsSync(product.barcode_image)) {
+          doc.image(product.barcode_image, cardX + 20, y + 42, { width: 180, height: 95, fit: [180, 95] })
         }
-      } catch (e) {
+      } catch {
         // If barcode image not found, skip
       }
     }
-    
+
     // Price below barcode
-    doc.fontSize(14).font('DejaVuSans-Bold')
+    doc.fontSize(13).font('DejaVuSans-Bold')
     const priceStr = `₹${(product.price_cents / 100).toFixed(2)}`
-    doc.text(priceStr, 40 + (col * 210) + 10, y + 165, { width: 180, align: 'center' })
-    
+    doc.text(priceStr, cardX + 10, y + 150, { width: 200, align: 'center' })
+
     // SKU below price
     doc.fontSize(8).font('DejaVuSans')
-    doc.text(product.sku, 40 + (col * 210) + 10, y + 180, { width: 180, align: 'center' })
+    doc.text(product.sku, cardX + 10, y + 170, { width: 200, align: 'center' })
   }
-  
+
   return new Promise<Buffer>((resolve, reject) => {
-    const chunks: Buffer[] = []
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk))
     doc.on('end', () => resolve(Buffer.concat(chunks)))
     doc.on('error', reject)
     doc.end()

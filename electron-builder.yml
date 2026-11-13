@@ -88,7 +88,8 @@ publish:
   owner: Mirza-aman-dev
   repo: clerkk
   releaseType: release
-npmRebuild: true
+npmRebuild: false
+beforePack: scripts/beforePack.js
 mac:
   target:
     - dmg
@@ -97,7 +98,9 @@ mac:
   icon: build/icon.icns
 win:
   target:
-    - nsis
+    - target: nsis
+      arch:
+        - x64
   icon: build/icon.ico
 nsis:
   oneClick: false

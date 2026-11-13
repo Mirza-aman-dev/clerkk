@@ -30,6 +30,7 @@ export function ProductModal({
   const settings = useSettings((s) => s.settings)
 
   const [name, setName] = useState('')
+  const [skuInput, setSkuInput] = useState('')
   const [price, setPrice] = useState('')
   const [cost, setCost] = useState('')
   const [stock, setStock] = useState('0')
@@ -46,6 +47,7 @@ export function ProductModal({
   useEffect(() => {
     if (!open) return
     setName(product?.name ?? '')
+    setSkuInput(product?.sku ?? '')
     setPrice(product ? (product.price_cents / 100).toFixed(2) : '')
     setCost(product ? (product.cost_cents / 100).toFixed(2) : '')
     setStock(String(product?.stock ?? 0))
@@ -88,13 +90,20 @@ export function ProductModal({
     setBusy(true)
     setGeneratingBarcode(true)
     try {
-      // Generate barcode for new products
-      let sku = product?.sku ?? ''
-      if (!product) {
+      const priceCents = amountToCents(Number(price))
+      let sku = skuInput.trim() || product?.sku || ''
+      let barcodeImage: string | null = product?.barcode_image ?? null
+
+      if (!product || !barcodeImage || sku !== product.sku) {
         try {
           setGeneratingBarcode(true)
-          const result = await window.api.products.generateBarcodeImage(name.trim())
+          const result = await window.api.products.generateBarcodeImage(
+            name.trim(),
+            priceCents,
+            sku || undefined
+          )
           sku = result.sku
+          barcodeImage = result.filePath
         } catch (e) {
           toast.error('Could not generate barcode', errMessage(e))
           setBusy(false)
@@ -106,20 +115,21 @@ export function ProductModal({
       const input = {
         name: name.trim(),
         sku,
-        price_cents: amountToCents(Number(price)),
+        price_cents: priceCents,
         cost_cents: cost === '' ? 0 : amountToCents(Number(cost) || 0),
         stock: parseInt(stock, 10) || 0,
         low_stock_threshold: parseInt(threshold, 10) || 5,
         category_id: categoryId ? Number(categoryId) : null,
         description: description.trim() || null,
-        image
+        image,
+        barcode_image: barcodeImage
       }
       if (product) {
         await window.api.products.update(product.id, input)
         toast.success('Product updated', input.name)
       } else {
         await window.api.products.create(input)
-        toast.success('Product added with barcode', input.name)
+        toast.success('Product added with barcode', `${input.name} (${sku})`)
       }
       onSaved()
       onClose()
@@ -163,6 +173,34 @@ export function ProductModal({
             invalid={!!errors.name}
             autoFocus
           />
+        </Field>
+
+        <Field
+          label="Barcode / SKU (optional)"
+          hint="Scan with USB barcode gun or leave blank to auto-generate EAN-13"
+          className="sm:col-span-2"
+        >
+          <div className="flex gap-2">
+            <Input
+              value={skuInput}
+              onChange={(e) => setSkuInput(e.target.value)}
+              placeholder="Auto-generated if left empty — or scan barcode gun here"
+              className="font-mono"
+              data-barcode-passthrough="true"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={async () => {
+                const generated = await window.api.products.generateSku()
+                setSkuInput(generated)
+              }}
+              title="Generate new EAN-13 barcode"
+            >
+              <Wand2 style={{ width: 14, height: 14 }} />
+              Generate
+            </Button>
+          </div>
         </Field>
 
         <Field label="Price" error={errors.price}>

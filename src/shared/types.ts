@@ -33,6 +33,7 @@ export interface ProductInput {
   low_stock_threshold?: number
   category_id?: number | null
   image?: string | null
+  barcode_image?: string | null
   description?: string | null
 }
 
@@ -105,6 +106,39 @@ export interface ActivityEntry {
   created_at: string
 }
 
+export type ReceiptPaperWidth = '80mm' | '58mm' | 'A5'
+
+export interface PrinterDeviceInfo {
+  name: string
+  displayName: string
+  description: string
+  status: number
+  statusText: string
+  isDefault: boolean
+  isThermal: boolean
+  portOrUri: string
+  driverModel: string
+  isConnected: boolean
+}
+
+export interface UsbScannerDeviceInfo {
+  id: string
+  name: string
+  manufacturer: string
+  vendorId?: string
+  productId?: string
+  connectionType: 'usb-hid' | 'usb-pos'
+  status: 'connected' | 'ready'
+}
+
+export interface PrintReceiptOptions {
+  saleId: number
+  deviceName?: string | null
+  paperWidth?: ReceiptPaperWidth
+  silent?: boolean
+  copies?: number
+}
+
 export interface AppSettings {
   business_name: string
   owner_name: string
@@ -120,6 +154,10 @@ export interface AppSettings {
   scanner_sensitivity: number
   invoice_prefix: string
   low_stock_default: number
+  printer_device_name: string | null
+  receipt_paper_width: ReceiptPaperWidth
+  usb_scanner_enabled: boolean
+  scanner_sound: boolean
 }
 
 export interface ListProductsFilter {
@@ -179,7 +217,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   camera_device_id: null,
   scanner_sensitivity: 1200,
   invoice_prefix: 'INV',
-  low_stock_default: 5
+  low_stock_default: 5,
+  printer_device_name: null,
+  receipt_paper_width: '80mm',
+  usb_scanner_enabled: true,
+  scanner_sound: true
 }
 
 // Full typed API surface exposed on window.api via contextBridge.
@@ -235,7 +277,11 @@ export interface ClerkkApi {
     generateSku: () => Promise<string>
     importCsv: (rows: string[][]) => Promise<ImportResult>
     exportCsv: () => Promise<string>
-    generateBarcodeImage: (productName: string, priceCents?: number) => Promise<{ sku: string; filePath: string }>
+    generateBarcodeImage: (
+      productName: string,
+      priceCents?: number,
+      existingSku?: string
+    ) => Promise<{ sku: string; filePath: string }>
     generateBarcodesPdf: () => Promise<Buffer>
   }
   customers: {
@@ -267,6 +313,18 @@ export interface ClerkkApi {
     getInvoiceBuffer: (saleId: number) => Promise<Uint8Array>
     saveReport: (from: string, to: string) => Promise<string | null>
     printReport: (from: string, to: string) => Promise<void>
+  }
+  devices: {
+    listPrinters: () => Promise<PrinterDeviceInfo[]>
+    listUsbScanners: () => Promise<UsbScannerDeviceInfo[]>
+    printThermalReceipt: (
+      options: PrintReceiptOptions
+    ) => Promise<{ success: boolean; printerName: string; error?: string }>
+    getReceiptHtml: (saleId: number, paperWidth?: ReceiptPaperWidth) => Promise<string>
+    testPrint: (
+      deviceName?: string | null,
+      paperWidth?: ReceiptPaperWidth
+    ) => Promise<{ success: boolean; printerName: string; error?: string }>
   }
   db: {
     clearAll: () => Promise<void>

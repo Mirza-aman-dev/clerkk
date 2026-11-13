@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { SplashScreen } from './components/SplashScreen'
 import { SetupScreen } from './components/SetupScreen'
 import { Footer } from './components/Footer'
+import { PrintBillModal } from './components/PrintBillModal'
 import { useSettings } from './stores/settings'
 import { useNav } from './stores/nav'
 import { useUi } from './stores/ui'
@@ -26,6 +27,7 @@ export function App() {
   const tab = useNav((s) => s.tab)
   const setTab = useNav((s) => s.setTab)
   const requestAddProduct = useUi((s) => s.requestAddProduct)
+  const openPrintModal = useUi((s) => s.openPrintModal)
 
   const [splashDone, setSplashDone] = useState(false)
   const [setupDone, setSetupDone] = useState(() => localStorage.getItem('clerkk_setup_complete') === 'true')
@@ -79,14 +81,14 @@ export function App() {
         window.api.sales
           .list({})
           .then((sales) => {
-            if (sales[0]) return window.api.pdf.printInvoice(sales[0].id)
+            if (sales[0]) openPrintModal(sales[0].id)
           })
           .catch((err) => toast.error('Print failed', errMessage(err)))
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [setTab, requestAddProduct])
+  }, [setTab, requestAddProduct, openPrintModal])
 
   // Show splash screen until settings are actually loaded
   if (!splashDone) {
@@ -143,6 +145,7 @@ export function App() {
           </main>
           <Footer />
         </div>
+        <PrintBillModal />
         <ToastHost />
       </div>
     </ErrorBoundary>

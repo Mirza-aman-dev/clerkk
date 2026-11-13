@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Download, Printer } from 'lucide-react'
 import { Button, Modal, Spinner } from './ui'
 import { toast } from '../stores/toasts'
+import { useUi } from '../stores/ui'
 import { errMessage } from '../lib/errors'
 import { formatDate } from '../../../shared/util'
 import type { Sale } from '../../../shared/types'
@@ -28,16 +29,9 @@ export function InvoicePreview({ sale, onClose }: { sale: Sale | null; onClose: 
     }
   }, [sale])
 
-  async function print() {
+  function print() {
     if (!sale) return
-    setBusy(true)
-    try {
-      await window.api.pdf.printInvoice(sale.id)
-    } catch (e) {
-      toast.error('Print failed', errMessage(e))
-    } finally {
-      setBusy(false)
-    }
+    useUi.getState().openPrintModal(sale.id)
   }
 
   async function save() {

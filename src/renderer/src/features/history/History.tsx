@@ -50,12 +50,8 @@ export function History() {
   )
   const sales = useAsyncData(() => window.api.sales.list(filter), [filter])
 
-  async function printInvoice(sale: Sale) {
-    try {
-      await window.api.pdf.printInvoice(sale.id)
-    } catch (e) {
-      toast.error('Print failed', errMessage(e))
-    }
+  function printInvoice(sale: Sale) {
+    useUi.getState().openPrintModal(sale.id)
   }
 
   return (

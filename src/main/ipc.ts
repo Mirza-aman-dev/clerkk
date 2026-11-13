@@ -13,6 +13,14 @@ import * as maintenance from './db/maintenance'
 import { logActivity } from './db'
 import { backupDatabase, restoreDatabase } from './files'
 import { buildInvoiceBuffer, buildReportBuffer } from './pdf'
+import {
+  listPrinters,
+  listUsbScanners,
+  printThermalReceipt,
+  getReceiptHtml,
+  testPrint
+} from './devices'
+import type { PrintReceiptOptions, ReceiptPaperWidth } from '../shared/types'
 
 function parentOf(event: Electron.IpcMainInvokeEvent): BrowserWindow {
   return BrowserWindow.fromWebContents(event.sender) as BrowserWindow
@@ -23,14 +31,28 @@ async function printPdfBuffer(buffer: Buffer): Promise<void> {
   await fs.writeFile(tmp, buffer)
   await new Promise<void>((resolve) => {
     const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+    let finished = false
+    const done = () => {
+      if (finished) return
+      finished = true
+      if (!win.isDestroyed()) win.destroy()
+      fs.unlink(tmp).catch(() => {})
+      resolve()
+    }
+    const timer = setTimeout(done, 60000)
     win.webContents.once('did-finish-load', () => {
-      win.webContents.print({ silent: false, printBackground: true }, () => {
-        win.destroy()
-        fs.unlink(tmp).catch(() => {})
-        resolve()
-      })
+      setTimeout(() => {
+        if (finished || win.isDestroyed()) return
+        win.webContents.print({ silent: false, printBackground: true }, () => {
+          clearTimeout(timer)
+          done()
+        })
+      }, 450)
     })
-    win.loadURL(pathToFileURL(tmp).toString())
+    win.loadURL(pathToFileURL(tmp).toString()).catch(() => {
+      clearTimeout(timer)
+      done()
+    })
   })
 }
 
@@ -59,12 +81,29 @@ export function registerIpc(): void {
   ipcMain.handle('products:generateSku', () => productsRepo.generateSku())
   ipcMain.handle('products:importCsv', async (_e, rows: string[][]) => await productsRepo.importCsv(rows))
   ipcMain.handle('products:exportCsv', () => productsRepo.exportCsv())
-  ipcMain.handle('products:generateBarcodeImage', async (_e, productName: string, priceCents?: number) => {
-    return await productsRepo.generateBarcodeImage(productName, priceCents)
-  })
+  ipcMain.handle(
+    'products:generateBarcodeImage',
+    async (_e, productName: string, priceCents?: number, existingSku?: string) => {
+      return await productsRepo.generateBarcodeImage(productName, priceCents, existingSku)
+    }
+  )
   ipcMain.handle('products:generateBarcodesPdf', async () => {
     return await productsRepo.generateBarcodesPdf()
   })
+
+  ipcMain.handle('devices:listPrinters', (e) => listPrinters(e.sender))
+  ipcMain.handle('devices:listUsbScanners', () => listUsbScanners())
+  ipcMain.handle('devices:printThermalReceipt', (_e, options: PrintReceiptOptions) =>
+    printThermalReceipt(options)
+  )
+  ipcMain.handle('devices:getReceiptHtml', (_e, saleId: number, paperWidth?: ReceiptPaperWidth) =>
+    getReceiptHtml(saleId, paperWidth)
+  )
+  ipcMain.handle(
+    'devices:testPrint',
+    (_e, deviceName?: string | null, paperWidth?: ReceiptPaperWidth) =>
+      testPrint(deviceName, paperWidth)
+  )
 
   ipcMain.handle('customers:list', (_e, search?: string) => customersRepo.listCustomers(search))
   ipcMain.handle('customers:get', (_e, id: number) => customersRepo.getCustomer(id))
@@ -100,8 +139,7 @@ export function registerIpc(): void {
     return filePath
   })
   ipcMain.handle('pdf:printInvoice', async (_e, saleId: number) => {
-    const buffer = await buildInvoiceBuffer(saleId)
-    await printPdfBuffer(buffer)
+    await printThermalReceipt({ saleId })
   })
   ipcMain.handle('pdf:getInvoiceBuffer', async (_e, saleId: number) => {
     const buffer = await buildInvoiceBuffer(saleId)

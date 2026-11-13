@@ -9,9 +9,11 @@ import {
   Package,
   Palette,
   Phone,
+  Printer,
   ReceiptText,
   RefreshCw,
   Save,
+  ScanBarcode,
   Trash2,
   Upload
 } from 'lucide-react'
@@ -23,7 +25,7 @@ import { useScanner } from '../../stores/scanner'
 import { toast } from '../../stores/toasts'
 import { errMessage } from '../../lib/errors'
 import { cn } from '../../lib/cn'
-import type { AppSettings } from '../../../../shared/types'
+import type { AppSettings, PrinterDeviceInfo, ReceiptPaperWidth } from '../../../../shared/types'
 
 const CURRENCIES = ['INR', 'USD', 'EUR', 'GBP', 'AED', 'SAR', 'JPY', 'CAD', 'AUD', 'SGD', 'PKR', 'BDT', 'LKR', 'NPR']
 
@@ -260,12 +262,53 @@ function PreferencesPanel({ settings }: { settings: AppSettings | null }) {
   const theme = useTheme((s) => s.theme)
   const setTheme = useTheme((s) => s.setTheme)
   const devices = useScanner((s) => s.devices)
+  const usbScanners = useScanner((s) => s.usbScanners)
+  const setUsbScanners = useScanner((s) => s.setUsbScanners)
   const setActiveDevice = useScanner((s) => s.setActiveDevice)
   const [sens, setSens] = useState('1200')
+  const [printers, setPrinters] = useState<PrinterDeviceInfo[]>([])
+  const [loadingPrinters, setLoadingPrinters] = useState(false)
+  const [loadingScanners, setLoadingScanners] = useState(false)
+  const [testingPrint, setTestingPrint] = useState(false)
 
   useEffect(() => {
     if (settings) setSens(String(settings.scanner_sensitivity))
   }, [settings])
+
+  async function refreshPrinters() {
+    setLoadingPrinters(true)
+    try {
+      const list = await window.api.devices.listPrinters()
+      setPrinters(list)
+    } catch {
+      // ignore
+    } finally {
+      setLoadingPrinters(false)
+    }
+  }
+
+  async function refreshScanners() {
+    setLoadingScanners(true)
+    try {
+      const list = await window.api.devices.listUsbScanners()
+      setUsbScanners(list)
+    } catch {
+      // ignore
+    } finally {
+      setLoadingScanners(false)
+    }
+  }
+
+  useEffect(() => {
+    void refreshPrinters()
+    void refreshScanners()
+  }, [])
+
+  const selectedPrinterObj =
+    printers.find((p) => p.name === settings?.printer_device_name) ??
+    printers.find((p) => p.isThermal) ??
+    printers.find((p) => p.isDefault) ??
+    null
 
   return (
     <div className="space-y-4">
@@ -279,6 +322,189 @@ function PreferencesPanel({ settings }: { settings: AppSettings | null }) {
             checked={theme === 'dark'}
             onChange={(v) => setTheme(v ? 'dark' : 'light')}
           />
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Bill Printer & Thermal Receipt"
+        description="Configure your connected USB / POS bill printer and paper roll width"
+      >
+        <div className="space-y-4">
+          <Field label="Default Bill Printer">
+            <div className="flex gap-2">
+              <Select
+                value={settings?.printer_device_name ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value || null
+                  void update({ printer_device_name: val })
+                }}
+              >
+                <option value="">Auto-detect Thermal / System Default Printer</option>
+                {printers.map((p) => (
+                  <option key={p.name} value={p.name}>
+                    {p.displayName}
+                    {p.isThermal ? ' ★ [Thermal Bill Printer]' : ''}
+                    {p.isDefault ? ' (Default)' : ''}
+                    {p.statusText !== 'Ready' ? ` — ${p.statusText}` : ''}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                variant="secondary"
+                onClick={refreshPrinters}
+                loading={loadingPrinters}
+                title="Refresh connected printers"
+              >
+                <RefreshCw style={{ width: 15, height: 15 }} />
+              </Button>
+            </div>
+          </Field>
+
+          {selectedPrinterObj && (
+            <div className="rounded-xl border border-app-border bg-app-surface2/50 p-3.5 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-app-text">
+                  <Printer style={{ width: 13, height: 13 }} className="mr-1.5 inline text-brand" />
+                  {selectedPrinterObj.displayName}
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {selectedPrinterObj.isThermal && (
+                    <Badge variant="brand">Thermal Bill Printer</Badge>
+                  )}
+                  <Badge variant={selectedPrinterObj.statusText === 'Ready' ? 'success' : 'warning'}>
+                    {selectedPrinterObj.statusText}
+                  </Badge>
+                </div>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-app-muted">
+                <div>
+                  <span className="text-app-faint">Driver: </span>
+                  {selectedPrinterObj.driverModel}
+                </div>
+                <div>
+                  <span className="text-app-faint">Port: </span>
+                  <span className="font-mono">{selectedPrinterObj.portOrUri}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Receipt paper roll width">
+              <Select
+                value={settings?.receipt_paper_width ?? '80mm'}
+                onChange={(e) =>
+                  void update({ receipt_paper_width: e.target.value as ReceiptPaperWidth })
+                }
+              >
+                <option value="80mm">80mm Thermal Roll (Standard 3&quot; POS)</option>
+                <option value="58mm">58mm Thermal Roll (Small 2&quot; Mini Bill)</option>
+                <option value="A5">A5 Standard Counter Sheet</option>
+              </Select>
+            </Field>
+            <div className="flex items-end">
+              <Button
+                variant="secondary"
+                className="w-full"
+                loading={testingPrint}
+                onClick={async () => {
+                  setTestingPrint(true)
+                  try {
+                    const res = await window.api.devices.testPrint(
+                      settings?.printer_device_name ?? null,
+                      settings?.receipt_paper_width ?? '80mm'
+                    )
+                    if (res.success) {
+                      toast.success('Test bill printed', `Sent to ${res.printerName}`)
+                    } else if (res.error) {
+                      toast.error('Test print failed', res.error)
+                    }
+                  } catch (e) {
+                    toast.error('Test print failed', errMessage(e))
+                  } finally {
+                    setTestingPrint(false)
+                  }
+                }}
+              >
+                <Printer style={{ width: 15, height: 15 }} />
+                Test Print Bill
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="USB Barcode Scanner (Barcode Gun)"
+        description="Plug-and-play USB HID barcode gun detection and sound feedback"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-app-text">Enable USB Barcode Gun auto-detect</p>
+              <p className="text-xs text-app-faint">
+                Automatically capture barcode gun trigger scans anywhere in the app and add products to sale
+              </p>
+            </div>
+            <Toggle
+              checked={settings?.usb_scanner_enabled !== false}
+              onChange={(v) => void update({ usb_scanner_enabled: v })}
+            />
+          </div>
+
+          <div className="flex items-center justify-between border-t border-app-border pt-3">
+            <div>
+              <p className="text-sm font-medium text-app-text">Scanner confirmation beep</p>
+              <p className="text-xs text-app-faint">Play a POS audio tone when a barcode is scanned</p>
+            </div>
+            <Toggle
+              checked={settings?.scanner_sound !== false}
+              onChange={(v) => void update({ scanner_sound: v })}
+            />
+          </div>
+
+          <div className="rounded-xl border border-app-border bg-app-surface2/50 p-3.5">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-app-text">
+                <ScanBarcode style={{ width: 14, height: 14 }} className="text-emerald-500" />
+                Connected USB Scanner Devices ({usbScanners.length})
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={refreshScanners}
+                loading={loadingScanners}
+                className="h-7 px-2 text-xs"
+              >
+                <RefreshCw style={{ width: 12, height: 12 }} />
+                Scan USB
+              </Button>
+            </div>
+            {usbScanners.length > 0 ? (
+              <div className="mt-2 space-y-1.5">
+                {usbScanners.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center justify-between rounded-lg border border-app-border bg-app-surface px-3 py-2 text-xs"
+                  >
+                    <div>
+                      <div className="font-medium text-app-text">{s.name}</div>
+                      <div className="font-mono text-[10px] text-app-faint">
+                        {s.manufacturer}
+                        {s.vendorId ? ` · VID:${s.vendorId}` : ''}
+                        {s.productId ? ` PID:${s.productId}` : ''}
+                      </div>
+                    </div>
+                    <Badge variant="success">Connected</Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-1.5 text-xs text-app-muted">
+                Global HID Keyboard Wedge listener is <strong>Active</strong>. Plug in any USB barcode gun and pull the trigger to scan immediately.
+              </p>
+            )}
+          </div>
         </div>
       </SectionCard>
 
