@@ -40,7 +40,10 @@ const api: ClerkkApi = {
       ipcRenderer.invoke('devices:testPrint', deviceName, paperWidth),
     printBarcodeLabels: (options) => ipcRenderer.invoke('devices:printBarcodeLabels', options),
     getBarcodeLabelHtml: (productId, labelSize) =>
-      ipcRenderer.invoke('devices:getBarcodeLabelHtml', productId, labelSize)
+      ipcRenderer.invoke('devices:getBarcodeLabelHtml', productId, labelSize),
+    detectLabelSize: (deviceName) => ipcRenderer.invoke('devices:detectLabelSize', deviceName),
+    testLabelPrint: (deviceName, labelSize) =>
+      ipcRenderer.invoke('devices:testLabelPrint', deviceName, labelSize)
   },
   customers: {
     list: (search) => ipcRenderer.invoke('customers:list', search),

@@ -419,22 +419,24 @@ export async function generateBarcodeImage(
       bcid: isValidEan13 ? 'ean13' : 'code128',
       text: sku,
       scale: 3,
-      height: 10,
+      height: 9,
       includetext: true,
-      textxalign: 'center',
-      textfont: 'DejaVuSans',
-      textsize: 12
+      ...(isValidEan13 ? {} : { textxalign: 'center' as const }),
+      textsize: 9,
+      paddingwidth: 4,
+      paddingheight: 1
     })
   } catch {
     pngBuffer = await bwipjs.toBuffer({
       bcid: 'code128',
       text: sku,
       scale: 3,
-      height: 10,
+      height: 9,
       includetext: true,
       textxalign: 'center',
-      textfont: 'DejaVuSans',
-      textsize: 12
+      textsize: 9,
+      paddingwidth: 4,
+      paddingheight: 1
     })
   }
 
@@ -484,12 +486,13 @@ export async function generateBarcodesPdf(
   const boldFont = join(__dirname, 'fonts', 'DejaVuSans-Bold.ttf')
 
   if (format === '26mm-label') {
-    // Exact POSiFLOW PSF20 26mm label dimensions: 50mm x 26mm (141.73pt x 73.70pt)
-    const labelW = 141.73
-    const labelH = 73.7
+    // Safe POSiFLOW PSF20 38x25mm / 50x25mm label dimensions: 38mm x 25mm (107.72pt x 70.87pt)
+    // Fits cleanly inside both 38x25mm and 50x25mm stickers with generous top/bottom/side margins
+    const labelW = 107.72
+    const labelH = 70.87
     const doc = new PDFDocument({
       size: [labelW, labelH],
-      margins: { top: 2, bottom: 2, left: 4, right: 4 },
+      margins: { top: 6, bottom: 6, left: 6, right: 6 },
       font: regularFont
     })
 
@@ -504,41 +507,61 @@ export async function generateBarcodesPdf(
       if (i > 0) {
         doc.addPage({
           size: [labelW, labelH],
-          margins: { top: 2, bottom: 2, left: 4, right: 4 }
+          margins: { top: 6, bottom: 6, left: 6, right: 6 }
         })
       }
 
-      // Product Name (top)
-      doc.fontSize(7).font('DejaVuSans-Bold')
-      doc.text(product.name, 4, 3, {
-        width: labelW - 8,
-        height: 10,
+      // Product Name (inset safely from top edge)
+      doc.fontSize(6.5).font('DejaVuSans-Bold')
+      doc.text(product.name, 6, 7, {
+        width: labelW - 12,
+        height: 9,
         align: 'center',
         ellipsis: true,
         lineBreak: false
       })
 
-      // Barcode Image (middle)
-      if (product.barcode_image && fsSync.existsSync(product.barcode_image)) {
-        try {
-          doc.image(product.barcode_image, 8, 13, {
-            width: labelW - 16,
-            height: 44,
-            fit: [labelW - 16, 44],
-            align: 'center'
-          })
-        } catch {
-          // ignore
-        }
+      // Pure Barcode Bars generated freshly without overlapping guard text
+      try {
+        const isEan =
+          /^\d{12}$/.test(product.sku) ||
+          (/^\d{13}$/.test(product.sku) &&
+            product.sku[12] === ean13CheckDigit(product.sku.slice(0, 12)))
+        const barPng = await bwipjs.toBuffer({
+          bcid: isEan ? 'ean13' : 'code128',
+          text: product.sku,
+          scale: 3,
+          height: 7,
+          includetext: false,
+          paddingwidth: 0,
+          paddingheight: 0
+        })
+        doc.image(barPng, 12, 18, {
+          width: labelW - 24,
+          height: 24,
+          fit: [labelW - 24, 24],
+          align: 'center'
+        })
+      } catch {
+        // fallback
       }
 
-      // Bottom row: SKU + Price
-      const priceStr = `₹${(product.price_cents / 100).toFixed(2)}`
-      doc.fontSize(6.5).font('DejaVuSans')
-      doc.text(product.sku, 5, 59, { width: 72, align: 'left', lineBreak: false })
+      // Clean SKU digits below bars
+      doc.fontSize(6).font('DejaVuSans-Bold')
+      doc.text(product.sku, 6, 44, {
+        width: labelW - 12,
+        align: 'center',
+        lineBreak: false
+      })
 
+      // Price centered safely above bottom edge
+      const priceStr = `₹${(product.price_cents / 100).toFixed(2)}`
       doc.fontSize(7.5).font('DejaVuSans-Bold')
-      doc.text(priceStr, labelW - 68, 58.5, { width: 63, align: 'right', lineBreak: false })
+      doc.text(priceStr, 6, 53, {
+        width: labelW - 12,
+        align: 'center',
+        lineBreak: false
+      })
     }
 
     return new Promise<Buffer>((resolve, reject) => {

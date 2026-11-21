@@ -106,12 +106,29 @@ export interface ActivityEntry {
   created_at: string
 }
 
-export type ReceiptPaperWidth = '25mm' | '26mm' | '26mm-narrow' | '58mm' | '80mm' | 'A5'
+export type LabelPaperSize =
+  | 'auto'
+  | '38x15mm'
+  | '50x12mm'
+  | '38x25mm'
+  | '50x25mm'
+  | '38x38mm'
+  | '50x30mm'
+  | '50x50mm'
+
+export type ReceiptPaperWidth =
+  | LabelPaperSize
+  | '25mm'
+  | '26mm'
+  | '26mm-narrow'
+  | '58mm'
+  | '80mm'
+  | 'A5'
 
 export interface PrintLabelsOptions {
   productIds?: number[]
   deviceName?: string | null
-  labelSize?: '25mm' | '26mm' | '26mm-narrow'
+  labelSize?: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow'
   copies?: number
   silent?: boolean
 }
@@ -335,11 +352,18 @@ export interface ClerkkApi {
     ) => Promise<{ success: boolean; printerName: string; error?: string }>
     printBarcodeLabels: (
       options: PrintLabelsOptions
-    ) => Promise<{ success: boolean; printerName: string; error?: string }>
+    ) => Promise<{ success: boolean; printerName: string; detectedSize?: LabelPaperSize; error?: string }>
     getBarcodeLabelHtml: (
       productId: number,
-      labelSize?: '25mm' | '26mm' | '26mm-narrow'
+      labelSize?: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow'
     ) => Promise<string>
+    detectLabelSize: (
+      deviceName?: string | null
+    ) => Promise<{ size: LabelPaperSize; widthMm: number; heightMm: number; source: string }>
+    testLabelPrint: (
+      deviceName?: string | null,
+      labelSize?: LabelPaperSize
+    ) => Promise<{ success: boolean; printerName: string; detectedSize?: LabelPaperSize; error?: string }>
   }
   db: {
     clearAll: () => Promise<void>

@@ -1,11 +1,13 @@
 import { BrowserWindow, WebContents, app } from 'electron'
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { promises as fs, existsSync, readFileSync } from 'fs'
+import { promises as fs } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
+import bwipjs from 'bwip-js'
 import {
   AppSettings,
+  LabelPaperSize,
   PrinterDeviceInfo,
   PrintLabelsOptions,
   PrintReceiptOptions,
@@ -15,9 +17,9 @@ import {
 } from '../shared/types'
 import { getSale } from './db/sales'
 import { getSettings } from './db/settings'
-import { listProducts, getProduct, generateBarcodeImage } from './db/products'
+import { listProducts, getProduct } from './db/products'
 import { logActivity } from './db'
-import { formatDate, formatCurrency } from '../shared/util'
+import { formatDate, formatCurrency, ean13CheckDigit } from '../shared/util'
 
 const execAsync = promisify(exec)
 
@@ -26,9 +28,13 @@ const POSIFLOW_KEYWORDS = [
   'psf20',
   'psf-20',
   'psf 20',
+  'psf',
   'shreyans',
   'tagsmart',
-  'taglite'
+  'taglite',
+  'bluetooth',
+  'bth',
+  'mpt'
 ]
 
 const THERMAL_KEYWORDS = [
@@ -438,14 +444,18 @@ export function buildThermalReceiptHtml(
   const currency = settings.currency || 'INR'
   const money = (cents: number) => formatCurrency(cents, currency)
 
-  // Dedicated POSiFLOW PSF20 25-26mm Label Layout (50mm x 25-26mm die-cut label or 26mm narrow roll)
-  if (paperWidth === '25mm' || paperWidth === '26mm' || paperWidth === '26mm-narrow') {
-    const isNarrowWidth = paperWidth === '26mm-narrow'
-    const heightMm = paperWidth === '25mm' ? '25mm' : '26mm'
-    const pageSizeCss = isNarrowWidth ? '26mm auto' : `50mm ${heightMm}`
-    const containerWidth = isNarrowWidth ? '24mm' : '48mm'
-    const baseFont = isNarrowWidth ? '7.5px' : '8.5px'
-    const titleFont = isNarrowWidth ? '9px' : '10.5px'
+  const isPosiflowLabel =
+    paperWidth !== '58mm' && paperWidth !== '80mm' && paperWidth !== 'A5'
+
+  // Dedicated POSiFLOW PSF20 Label Layout (supports all 7 official label sizes + auto-detect)
+  if (isPosiflowLabel) {
+    const geom = resolveLabelGeometry(
+      paperWidth as LabelPaperSize | '25mm' | '26mm' | '26mm-narrow'
+    )
+    const pageSizeCss = `${geom.pageWidthMm}mm ${geom.pageHeightMm}mm`
+    const containerWidth = `${geom.coreWidthMm}mm`
+    const baseFont = geom.pageHeightMm <= 15 ? '6.5px' : '7.5px'
+    const titleFont = geom.pageHeightMm <= 15 ? '7.5px' : '9px'
 
     const compactItemsHtml = sale.items
       .map(
@@ -485,9 +495,9 @@ export function buildThermalReceiptHtml(
     }
     .label-sheet {
       width: ${containerWidth};
-      max-width: 100%;
+      max-width: 86%;
       margin: 0 auto;
-      padding: 1mm 1.2mm;
+      padding: 2mm 1.5mm;
       overflow: hidden;
     }
     .hdr {
@@ -515,10 +525,10 @@ export function buildThermalReceiptHtml(
     .sub-meta {
       display: flex;
       justify-content: space-between;
-      font-size: ${isNarrowWidth ? '6.5px' : '7.5px'};
-      margin-bottom: 0.6mm;
+      font-size: 6.5px;
+      margin-bottom: 0.5mm;
       border-bottom: 0.5px dashed #000;
-      padding-bottom: 0.5mm;
+      padding-bottom: 0.4mm;
     }
     .items-wrap {
       margin: 0.5mm 0;
@@ -556,7 +566,7 @@ export function buildThermalReceiptHtml(
       font-weight: 900;
     }
     .tot-meta {
-      font-size: ${isNarrowWidth ? '6.5px' : '7.5px'};
+      font-size: 6.5px;
       font-weight: 700;
     }
   </style>
@@ -820,19 +830,19 @@ function getMicronPageSize(
   paperWidth?: ReceiptPaperWidth
 ): { width: number; height: number } | undefined {
   // 1 mm = 1000 microns
-  if (paperWidth === '25mm') {
-    // POSiFLOW PSF20 50mm x 25mm label
-    return { width: 50000, height: 25000 }
+  const specs: Record<string, { width: number; height: number }> = {
+    '38x15mm': { width: 38000, height: 15000 },
+    '50x12mm': { width: 50000, height: 12000 },
+    '38x25mm': { width: 38000, height: 25000 },
+    '50x25mm': { width: 50000, height: 25000 },
+    '38x38mm': { width: 38000, height: 38000 },
+    '50x30mm': { width: 50000, height: 30000 },
+    '50x50mm': { width: 50000, height: 50000 },
+    '25mm': { width: 38000, height: 25000 },
+    '26mm': { width: 50000, height: 25000 },
+    '26mm-narrow': { width: 38000, height: 25000 }
   }
-  if (paperWidth === '26mm') {
-    // POSiFLOW PSF20 50mm x 26mm label
-    return { width: 50000, height: 26000 }
-  }
-  if (paperWidth === '26mm-narrow') {
-    // 26mm x 40mm narrow tag
-    return { width: 26000, height: 40000 }
-  }
-  return undefined
+  return paperWidth ? specs[paperWidth] : undefined
 }
 
 async function printHtmlInHiddenWindow(
@@ -1084,70 +1094,302 @@ export async function testPrint(
   return printHtmlInHiddenWindow(html, target, true, 1, width)
 }
 
-async function buildBarcodeLabelsHtml(
-  productIds?: number[],
-  labelSize: '25mm' | '26mm' | '26mm-narrow' = '25mm',
+export const POSIFLOW_SUPPORTED_SIZES: Array<{
+  id: Exclude<LabelPaperSize, 'auto'>
+  widthMm: number
+  heightMm: number
+  label: string
+}> = [
+  { id: '38x15mm', widthMm: 38, heightMm: 15, label: '38 × 15 mm' },
+  { id: '50x12mm', widthMm: 50, heightMm: 12, label: '50 × 12 mm' },
+  { id: '38x25mm', widthMm: 38, heightMm: 25, label: '38 × 25 mm' },
+  { id: '50x25mm', widthMm: 50, heightMm: 25, label: '50 × 25 mm' },
+  { id: '38x38mm', widthMm: 38, heightMm: 38, label: '38 × 38 mm' },
+  { id: '50x30mm', widthMm: 50, heightMm: 30, label: '50 × 30 mm' },
+  { id: '50x50mm', widthMm: 50, heightMm: 50, label: '50 × 50 mm' }
+]
+
+function matchClosestPosiflowSize(wMm: number, hMm: number): Exclude<LabelPaperSize, 'auto'> {
+  let best: Exclude<LabelPaperSize, 'auto'> = '38x25mm'
+  let bestDist = Infinity
+  for (const s of POSIFLOW_SUPPORTED_SIZES) {
+    const dist = Math.abs(s.widthMm - wMm) + Math.abs(s.heightMm - hMm)
+    if (dist < bestDist) {
+      bestDist = dist
+      best = s.id
+    }
+  }
+  return best
+}
+
+export async function detectLabelSize(deviceName?: string | null): Promise<{
+  size: LabelPaperSize
+  widthMm: number
+  heightMm: number
+  source: string
+}> {
+  const settings = getSettings()
+  const target = (deviceName || settings.printer_device_name || '').trim()
+
+  try {
+    if (process.platform === 'win32') {
+      const safeName = target.replace(/'/g, "''")
+      const psCmd = safeName
+        ? `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_PrinterConfiguration | Where-Object { $_.Name -like '*${safeName}*' } | Select-Object -First 1 Name, PaperSize, PaperWidth, PaperLength | ConvertTo-Json -Compress"`
+        : `powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_PrinterConfiguration | Select-Object -First 5 Name, PaperSize, PaperWidth, PaperLength | ConvertTo-Json -Compress"`
+      const { stdout } = await execAsync(psCmd, { timeout: 2200 })
+      if (stdout && stdout.trim()) {
+        const parsed = JSON.parse(stdout.trim())
+        const item = Array.isArray(parsed) ? parsed[0] : parsed
+        if (item) {
+          const paperSizeStr = String(item.PaperSize || '')
+          const dimMatch = paperSizeStr.match(/(\d{2})\s*[x×*]\s*(\d{2})/i)
+          if (dimMatch) {
+            const w = Number(dimMatch[1])
+            const h = Number(dimMatch[2])
+            const matched = matchClosestPosiflowSize(w, h)
+            const spec = POSIFLOW_SUPPORTED_SIZES.find((s) => s.id === matched)!
+            return {
+              size: matched,
+              widthMm: spec.widthMm,
+              heightMm: spec.heightMm,
+              source: `Printer driver (${paperSizeStr})`
+            }
+          }
+          // PaperWidth and PaperLength in Win32_PrinterConfiguration are in tenths of a millimeter
+          const wMm = Math.round(Number(item.PaperWidth || 0) / 10)
+          const hMm = Math.round(Number(item.PaperLength || 0) / 10)
+          if (wMm >= 20 && wMm <= 65 && hMm >= 10 && hMm <= 65) {
+            const matched = matchClosestPosiflowSize(wMm, hMm)
+            const spec = POSIFLOW_SUPPORTED_SIZES.find((s) => s.id === matched)!
+            return {
+              size: matched,
+              widthMm: spec.widthMm,
+              heightMm: spec.heightMm,
+              source: `Printer spooler (${wMm}×${hMm}mm)`
+            }
+          }
+        }
+      }
+    } else if (process.platform === 'darwin' || process.platform === 'linux') {
+      if (target) {
+        const { stdout } = await execAsync(`lpoptions -p "${target.replace(/"/g, '')}"`, {
+          timeout: 1500
+        })
+        const m = stdout.match(/PageSize[^\s]*?(\d{2})[xX](\d{2})/i)
+        if (m) {
+          const matched = matchClosestPosiflowSize(Number(m[1]), Number(m[2]))
+          const spec = POSIFLOW_SUPPORTED_SIZES.find((s) => s.id === matched)!
+          return {
+            size: matched,
+            widthMm: spec.widthMm,
+            heightMm: spec.heightMm,
+            source: 'CUPS driver media size'
+          }
+        }
+      }
+    }
+  } catch {
+    // Fallback to universal 38x25mm / 50x25mm safe core
+  }
+
+  return {
+    size: '38x25mm',
+    widthMm: 38,
+    heightMm: 25,
+    source: 'POSiFLOW PSF20 Auto-Calibrated (38×25 / 50×25 mm Safe Core)'
+  }
+}
+
+async function generateCleanBarcodeBarsDataUri(sku: string): Promise<string> {
+  const cleanSku = sku.trim() || '0000000000000'
+  const isValidEan13 =
+    /^\d{12}$/.test(cleanSku) ||
+    (/^\d{13}$/.test(cleanSku) && cleanSku[12] === ean13CheckDigit(cleanSku.slice(0, 12)))
+
+  try {
+    const buf = await bwipjs.toBuffer({
+      bcid: isValidEan13 ? 'ean13' : 'code128',
+      text: cleanSku,
+      scale: 4,
+      height: 8,
+      includetext: false,
+      paddingwidth: 0,
+      paddingheight: 0
+    })
+    return `data:image/png;base64,${buf.toString('base64')}`
+  } catch {
+    const buf = await bwipjs.toBuffer({
+      bcid: 'code128',
+      text: cleanSku,
+      scale: 4,
+      height: 8,
+      includetext: false,
+      paddingwidth: 0,
+      paddingheight: 0
+    })
+    return `data:image/png;base64,${buf.toString('base64')}`
+  }
+}
+
+interface LabelItemData {
+  name: string
+  sku: string
+  price_cents: number
+}
+
+function resolveLabelGeometry(
+  rawSize?: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow'
+): {
+  resolvedId: Exclude<LabelPaperSize, 'auto'>
+  pageWidthMm: number
+  pageHeightMm: number
+  coreWidthMm: number
+  coreHeightMm: number
+  barHeightMm: number
+  nameFontPx: number
+  skuFontPx: number
+  priceFontPx: number
+} {
+  const norm: Exclude<LabelPaperSize, 'auto'> =
+    !rawSize || rawSize === 'auto' || rawSize === '25mm' || rawSize === '26mm-narrow'
+      ? '38x25mm'
+      : rawSize === '26mm'
+        ? '50x25mm'
+        : rawSize
+
+  switch (norm) {
+    case '50x12mm':
+      return {
+        resolvedId: '50x12mm',
+        pageWidthMm: 50,
+        pageHeightMm: 12,
+        coreWidthMm: 36,
+        coreHeightMm: 8.8,
+        barHeightMm: 3.6,
+        nameFontPx: 6.5,
+        skuFontPx: 5.5,
+        priceFontPx: 7
+      }
+    case '38x15mm':
+      return {
+        resolvedId: '38x15mm',
+        pageWidthMm: 38,
+        pageHeightMm: 15,
+        coreWidthMm: 30,
+        coreHeightMm: 10.8,
+        barHeightMm: 4.5,
+        nameFontPx: 7,
+        skuFontPx: 6,
+        priceFontPx: 7.5
+      }
+    case '38x25mm':
+      return {
+        resolvedId: '38x25mm',
+        pageWidthMm: 38,
+        pageHeightMm: 25,
+        coreWidthMm: 30,
+        coreHeightMm: 17.2,
+        barHeightMm: 7.5,
+        nameFontPx: 8.5,
+        skuFontPx: 7,
+        priceFontPx: 9.5
+      }
+    case '50x25mm':
+      return {
+        resolvedId: '50x25mm',
+        pageWidthMm: 50,
+        pageHeightMm: 25,
+        coreWidthMm: 34,
+        coreHeightMm: 17.5,
+        barHeightMm: 7.8,
+        nameFontPx: 9,
+        skuFontPx: 7.5,
+        priceFontPx: 10
+      }
+    case '50x30mm':
+      return {
+        resolvedId: '50x30mm',
+        pageWidthMm: 50,
+        pageHeightMm: 30,
+        coreWidthMm: 38,
+        coreHeightMm: 21.5,
+        barHeightMm: 9.8,
+        nameFontPx: 9.5,
+        skuFontPx: 8,
+        priceFontPx: 10.5
+      }
+    case '38x38mm':
+      return {
+        resolvedId: '38x38mm',
+        pageWidthMm: 38,
+        pageHeightMm: 38,
+        coreWidthMm: 31,
+        coreHeightMm: 27,
+        barHeightMm: 12,
+        nameFontPx: 10,
+        skuFontPx: 8,
+        priceFontPx: 11
+      }
+    case '50x50mm':
+      return {
+        resolvedId: '50x50mm',
+        pageWidthMm: 50,
+        pageHeightMm: 50,
+        coreWidthMm: 40,
+        coreHeightMm: 36,
+        barHeightMm: 15,
+        nameFontPx: 11,
+        skuFontPx: 9,
+        priceFontPx: 12.5
+      }
+  }
+}
+
+async function buildBarcodeLabelsHtmlFromItems(
+  items: LabelItemData[],
+  rawSize: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow' = 'auto',
   copiesPerProduct = 1
-): Promise<{ html: string; totalStickers: number }> {
+): Promise<{ html: string; totalStickers: number; resolvedSize: Exclude<LabelPaperSize, 'auto'> }> {
   const settings = getSettings()
   const currency = settings.currency || 'INR'
   const money = (cents: number) => formatCurrency(cents, currency)
-  const isNarrow = labelSize === '26mm-narrow'
-  const labelHeightMm = labelSize === '25mm' ? 25 : 26
   const copiesCount = Math.max(1, Math.min(500, Math.floor(copiesPerProduct || 1)))
+  const geom = resolveLabelGeometry(rawSize)
 
-  const products =
-    productIds && productIds.length > 0
-      ? productIds
-          .map((id) => getProduct(id))
-          .filter((p): p is NonNullable<typeof p> => Boolean(p))
-      : listProducts()
-
-  if (!products.length) {
+  if (!items.length) {
     throw new Error('No products available to print labels')
   }
 
   const labelBlocks: string[] = []
-  for (const product of products) {
-    let imgPath = product.barcode_image
-    if (!imgPath || !existsSync(imgPath)) {
-      const gen = await generateBarcodeImage(product.name, product.price_cents, product.sku)
-      imgPath = gen.filePath
-    }
-    const b64 = existsSync(imgPath) ? readFileSync(imgPath).toString('base64') : ''
-    const dataUri = b64 ? `data:image/png;base64,${b64}` : ''
+  for (const product of items) {
+    const dataUri = await generateCleanBarcodeBarsDataUri(product.sku)
 
     const stickerHtml = `
-      <div class="sticker">
-        <div class="prod-name">${escapeHtml(product.name)}</div>
-        ${
-          dataUri
-            ? `<div class="brc-wrap"><img src="${dataUri}" class="brc-img" alt="${escapeHtml(product.sku)}" /></div>`
-            : `<div class="sku-fallback">${escapeHtml(product.sku)}</div>`
-        }
-        <div class="price-row">
-          <span class="price-txt">${escapeHtml(money(product.price_cents))}</span>
+      <div class="sticker-page">
+        <div class="sticker-core">
+          <div class="prod-name">${escapeHtml(product.name)}</div>
+          <div class="brc-wrap">
+            <img src="${dataUri}" class="brc-img" alt="${escapeHtml(product.sku)}" />
+          </div>
+          <div class="sku-txt">${escapeHtml(product.sku)}</div>
+          <div class="price-txt">${escapeHtml(money(product.price_cents))}</div>
         </div>
       </div>
     `
-    // Repeat the sticker block exact `copiesCount` times so the thermal printer feeds & prints every copy reliably
     for (let c = 0; c < copiesCount; c++) {
       labelBlocks.push(stickerHtml)
     }
   }
 
-  const pageSizeCss = isNarrow ? `26mm ${labelHeightMm}mm` : `50mm ${labelHeightMm}mm`
-  const stickerWidth = isNarrow ? '24.5mm' : '48mm'
-  const stickerHeight = `${(labelHeightMm - 0.8).toFixed(1)}mm`
-
   const html = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>POSiFLOW PSF20 ${labelHeightMm}mm Barcode Labels</title>
+  <title>POSiFLOW PSF20 ${geom.resolvedId} Barcode Labels</title>
   <style>
     @page {
-      size: ${pageSizeCss};
+      size: ${geom.pageWidthMm}mm ${geom.pageHeightMm}mm;
       margin: 0mm !important;
     }
     * {
@@ -1158,75 +1400,83 @@ async function buildBarcodeLabelsHtml(
     html, body {
       margin: 0;
       padding: 0;
+      width: 100%;
       background: #ffffff;
       color: #000000;
       font-family: 'Arial', 'Helvetica Neue', sans-serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
-    .sticker {
-      width: ${stickerWidth};
-      height: ${stickerHeight};
+    .sticker-page {
+      width: ${geom.pageWidthMm}mm;
+      height: ${geom.pageHeightMm}mm;
+      max-width: 100%;
       margin: 0 auto;
-      padding: 0.8mm 1.2mm;
       display: flex;
-      flex-direction: column;
-      justify-content: space-between;
       align-items: center;
-      text-align: center;
+      justify-content: center;
       page-break-after: always;
       break-after: page;
       page-break-inside: avoid;
       break-inside: avoid;
       overflow: hidden;
     }
-    .sticker:last-child {
+    .sticker-page:last-child {
       page-break-after: auto;
       break-after: auto;
     }
+    .sticker-core {
+      width: ${geom.coreWidthMm}mm;
+      max-width: 86%;
+      max-height: ${geom.coreHeightMm}mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 0.45mm;
+      overflow: hidden;
+    }
     .prod-name {
-      font-size: 9.5px;
+      font-size: ${geom.nameFontPx}px;
       font-weight: 900;
-      line-height: 1.1;
-      max-width: 100%;
+      line-height: 1.08;
+      width: 100%;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      letter-spacing: 0.1px;
+      color: #000000;
     }
     .brc-wrap {
-      width: 100%;
-      height: 14mm;
+      width: 86%;
+      height: ${geom.barHeightMm}mm;
       display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
+      margin: 0.2mm 0;
     }
     .brc-img {
-      max-width: 96%;
-      max-height: 13.6mm;
-      object-fit: contain;
-      image-rendering: pixelated;
-    }
-    .sku-fallback {
-      font-family: 'Consolas', monospace;
-      font-size: 10px;
-      font-weight: 800;
-      padding: 3mm 0;
-    }
-    .price-row {
       width: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      border-top: 0.6px solid #000;
-      padding-top: 0.4mm;
-      line-height: 1.05;
+      height: 100%;
+      object-fit: fill;
+      image-rendering: pixelated;
+      display: block;
+    }
+    .sku-txt {
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: ${geom.skuFontPx}px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      line-height: 1;
+      color: #000000;
     }
     .price-txt {
-      font-size: 10.5px;
+      font-size: ${geom.priceFontPx}px;
       font-weight: 900;
-      letter-spacing: 0.2px;
+      line-height: 1.08;
+      color: #000000;
+      margin-top: 0.15mm;
     }
   </style>
 </head>
@@ -1235,48 +1485,113 @@ async function buildBarcodeLabelsHtml(
 </body>
 </html>`
 
-  return { html, totalStickers: labelBlocks.length }
+  return { html, totalStickers: labelBlocks.length, resolvedSize: geom.resolvedId }
+}
+
+async function buildBarcodeLabelsHtml(
+  productIds?: number[],
+  labelSize: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow' = 'auto',
+  copiesPerProduct = 1
+): Promise<{ html: string; totalStickers: number; resolvedSize: Exclude<LabelPaperSize, 'auto'> }> {
+  const products =
+    productIds && productIds.length > 0
+      ? productIds
+          .map((id) => getProduct(id))
+          .filter((p): p is NonNullable<typeof p> => Boolean(p))
+      : listProducts()
+
+  return buildBarcodeLabelsHtmlFromItems(
+    products.map((p) => ({ name: p.name, sku: p.sku, price_cents: p.price_cents })),
+    labelSize,
+    copiesPerProduct
+  )
 }
 
 export async function getBarcodeLabelHtml(
   productId: number,
-  labelSize: '25mm' | '26mm' | '26mm-narrow' = '25mm'
+  labelSize: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow' = 'auto'
 ): Promise<string> {
   const { html } = await buildBarcodeLabelsHtml([productId], labelSize, 1)
   return html
 }
 
 /**
- * Prints 25-26mm barcode sticker labels directly onto the POSiFLOW PSF20 thermal label printer.
+ * Prints barcode sticker labels directly onto the POSiFLOW PSF20 thermal label printer.
+ * When labelSize is 'auto' (or omitted), automatically detects the printer's configured label size.
  */
 export async function printBarcodeLabels(
   options: PrintLabelsOptions
-): Promise<{ success: boolean; printerName: string }> {
+): Promise<{ success: boolean; printerName: string; detectedSize?: LabelPaperSize }> {
   const settings = getSettings()
-  const labelSize = options.labelSize || '25mm'
+  const target =
+    options.deviceName !== undefined ? options.deviceName : settings.printer_device_name
   const copies = Math.max(1, Math.min(500, Math.floor(options.copies ?? 1)))
 
-  const { html, totalStickers } = await buildBarcodeLabelsHtml(
+  let activeSize: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow' = options.labelSize || 'auto'
+  if (activeSize === 'auto') {
+    const detected = await detectLabelSize(target)
+    activeSize = detected.size
+  }
+
+  const { html, totalStickers, resolvedSize } = await buildBarcodeLabelsHtml(
     options.productIds,
-    labelSize,
+    activeSize,
     copies
   )
 
-  const target =
-    options.deviceName !== undefined ? options.deviceName : settings.printer_device_name
-  // Pass copies=1 to printHtmlInHiddenWindow because the HTML document already contains `copies` distinct pages
   const res = await printHtmlInHiddenWindow(
     html,
     target,
     options.silent ?? true,
     1,
-    labelSize === '26mm-narrow' ? '26mm-narrow' : labelSize === '25mm' ? '25mm' : '26mm'
+    resolvedSize
   )
   if (res.success) {
     logActivity(
       'labels.print',
-      `Printed ${totalStickers} (${labelSize}) barcode label(s) on ${res.printerName}`
+      `Printed ${totalStickers} (${resolvedSize}) barcode label(s) on ${res.printerName}`
     )
   }
-  return res
+  return { ...res, detectedSize: resolvedSize }
+}
+
+/**
+ * Prints 2 pieces (x2 copies) of a sample product barcode label (Name + Barcode + Price)
+ * directly to the POSiFLOW PSF20 (Bluetooth / USB) for instant calibration & clarity testing.
+ */
+export async function testLabelPrint(
+  deviceName?: string | null,
+  labelSize: LabelPaperSize = 'auto'
+): Promise<{ success: boolean; printerName: string; detectedSize?: LabelPaperSize }> {
+  const settings = getSettings()
+  const target = deviceName !== undefined ? deviceName : settings.printer_device_name
+
+  let activeSize: LabelPaperSize = labelSize || 'auto'
+  if (activeSize === 'auto') {
+    const detected = await detectLabelSize(target)
+    activeSize = detected.size
+  }
+
+  const sampleItems: LabelItemData[] = [
+    {
+      name: 'Earings',
+      sku: '7120413779034',
+      price_cents: 14900
+    }
+  ]
+
+  const { html, resolvedSize } = await buildBarcodeLabelsHtmlFromItems(
+    sampleItems,
+    activeSize,
+    2 // x2 pieces as requested
+  )
+
+  const res = await printHtmlInHiddenWindow(html, target, true, 1, resolvedSize)
+  if (res.success) {
+    logActivity(
+      'labels.test',
+      `Printed x2 sample barcode labels (${resolvedSize}) on ${res.printerName}`
+    )
+  }
+  return { ...res, detectedSize: resolvedSize }
 }

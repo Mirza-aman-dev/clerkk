@@ -392,30 +392,64 @@ function PreferencesPanel({ settings }: { settings: AppSettings | null }) {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Default Paper / Label Size (POSiFLOW PSF20)">
               <Select
-                value={settings?.receipt_paper_width ?? '26mm'}
+                value={settings?.receipt_paper_width ?? 'auto'}
                 onChange={(e) =>
                   void update({ receipt_paper_width: e.target.value as ReceiptPaperWidth })
                 }
               >
-                <option value="25mm">25mm Label — POSiFLOW PSF20 (50×25mm Sticker)</option>
-                <option value="26mm">26mm Label — POSiFLOW PSF20 (50×26mm Default)</option>
-                <option value="26mm-narrow">26mm Narrow Roll — POSiFLOW PSF20 (26mm Width)</option>
+                <option value="auto">Auto-Detect Label Size (38×25 / 50×25 mm Safe Fit)</option>
+                <option value="38x25mm">38 × 25 mm — POSiFLOW PSF20 Standard Label</option>
+                <option value="50x25mm">50 × 25 mm — POSiFLOW PSF20 Wide Label</option>
+                <option value="38x15mm">38 × 15 mm — POSiFLOW PSF20 Small Tag</option>
+                <option value="50x12mm">50 × 12 mm — POSiFLOW PSF20 Slim Strip</option>
+                <option value="38x38mm">38 × 38 mm — POSiFLOW PSF20 Square Label</option>
+                <option value="50x30mm">50 × 30 mm — POSiFLOW PSF20 Medium Label</option>
+                <option value="50x50mm">50 × 50 mm — POSiFLOW PSF20 Large Label</option>
                 <option value="58mm">58mm Thermal Roll (2&quot; Continuous Roll)</option>
                 <option value="80mm">80mm Thermal Roll (3&quot; Standard POS)</option>
                 <option value="A5">A5 Standard Counter Sheet</option>
               </Select>
             </Field>
-            <div className="flex items-end">
+            <div className="flex items-end gap-2">
               <Button
                 variant="secondary"
-                className="w-full"
+                className="flex-1"
+                loading={testingPrint}
+                onClick={async () => {
+                  setTestingPrint(true)
+                  try {
+                    const res = await window.api.devices.testLabelPrint(
+                      settings?.printer_device_name ?? null,
+                      'auto'
+                    )
+                    if (res.success) {
+                      toast.success(
+                        'Printed ×2 Sample Barcode Labels',
+                        `Earings · 7120413779034 · ₹149.00 (×2) → ${res.printerName} [${res.detectedSize || '38x25mm'}]`
+                      )
+                    } else if (res.error) {
+                      toast.error('Test label print failed', res.error)
+                    }
+                  } catch (e) {
+                    toast.error('Test label print failed', errMessage(e))
+                  } finally {
+                    setTestingPrint(false)
+                  }
+                }}
+              >
+                <ScanBarcode style={{ width: 15, height: 15 }} />
+                Test ×2 Barcode (PSF20)
+              </Button>
+              <Button
+                variant="secondary"
+                className="flex-1"
                 loading={testingPrint}
                 onClick={async () => {
                   setTestingPrint(true)
                   try {
                     const res = await window.api.devices.testPrint(
                       settings?.printer_device_name ?? null,
-                      settings?.receipt_paper_width ?? '26mm'
+                      settings?.receipt_paper_width ?? '38x25mm'
                     )
                     if (res.success) {
                       toast.success('Test bill printed', `Sent to ${res.printerName}`)

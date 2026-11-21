@@ -195,13 +195,13 @@ export function Products() {
     try {
       const res = await window.api.devices.printBarcodeLabels({
         productIds,
-        labelSize: '26mm',
+        labelSize: 'auto',
         silent: true,
         copies: 1
       })
       if (res.success) {
         toast.success(
-          '26mm Labels sent to POSiFLOW PSF20',
+          `Labels sent to POSiFLOW PSF20 (${res.detectedSize || '38x25mm'})`,
           `Printed on ${res.printerName || 'POSiFLOW PSF20'}`
         )
       }
@@ -210,6 +210,23 @@ export function Products() {
     } finally {
       setBrcGenerating(false)
       setBrcOpen(false)
+    }
+  }
+
+  async function handleTest2xSample() {
+    setBrcGenerating(true)
+    try {
+      const res = await window.api.devices.testLabelPrint(null, 'auto')
+      if (res.success) {
+        toast.success(
+          'Printed ×2 Sample Barcode Labels',
+          `Earings · 7120413779034 · ₹149.00 (×2) on ${res.printerName} [${res.detectedSize || '38x25mm'}]`
+        )
+      }
+    } catch (e) {
+      toast.error('Sample test print failed', errMessage(e))
+    } finally {
+      setBrcGenerating(false)
     }
   }
 
@@ -502,6 +519,7 @@ export function Products() {
         generating={brcGenerating}
         onGenerate={handleBrcGenerate}
         onPrintPosiflow={() => handlePrintLabels()}
+        onTest2xSample={handleTest2xSample}
       />
     </div>
   )
@@ -512,25 +530,35 @@ function BrcModal({
   onClose,
   generating,
   onGenerate,
-  onPrintPosiflow
+  onPrintPosiflow,
+  onTest2xSample
 }: {
   open: boolean
   onClose: () => void
   generating: boolean
   onGenerate: (format: '26mm-label' | 'a4-sheet') => Promise<void>
   onPrintPosiflow: () => Promise<void>
+  onTest2xSample: () => Promise<void>
 }) {
   return (
     <Modal
       open={open}
       onClose={onClose}
       size="lg"
-      title="POSiFLOW PSF20 · 26mm Barcode Labels & PDF"
-      description="Print 26mm barcode sticker labels directly on POSiFLOW PSF20 or download label PDF."
+      title="POSiFLOW PSF20 · Auto-Detected Barcode Labels & PDF"
+      description="Print zero-overflow barcode sticker labels directly on POSiFLOW PSF20 (Bluetooth / USB) or download label PDF."
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={generating}>
             Close
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={onTest2xSample}
+            loading={generating}
+          >
+            <ScanBarcode style={{ width: 15, height: 15 }} />
+            Test ×2 Sample (PSF20)
           </Button>
           <Button
             variant="secondary"
@@ -546,14 +574,14 @@ function BrcModal({
             loading={generating}
           >
             <Download style={{ width: 15, height: 15 }} />
-            Download 26mm Label PDF
+            Label Roll PDF
           </Button>
           <Button
             onClick={onPrintPosiflow}
             loading={generating}
           >
             <Printer style={{ width: 15, height: 15 }} />
-            Print 26mm Labels (POSiFLOW PSF20)
+            Print All Labels (PSF20)
           </Button>
         </>
       }
@@ -561,14 +589,14 @@ function BrcModal({
       <div className="space-y-4">
         <div className="rounded-xl border border-brand/30 bg-brand/5 p-4 text-xs text-app-muted">
           <div className="font-semibold text-app-text">
-            POSiFLOW PSF20 · 26mm Label Configuration Active
+            POSiFLOW PSF20 · Auto-Detect Label Size & Zero-Overflow Layout
           </div>
           <p className="mt-1">
-            Each label is formatted to exact <strong>26mm thermal sticker dimensions (50×26mm, 203 DPI, 0mm margin)</strong> with Product Name, high-contrast scannable Barcode, SKU, and Price.
+            Supports all 7 official POSiFLOW PSF20 label sizes: <strong>38×15 mm, 50×12 mm, 38×25 mm, 50×25 mm, 38×38 mm, 50×30 mm, 50×50 mm</strong>. Each label prints inside a centered safe zone with crisp pure barcode bars, separate non-overlapping SKU digits, Product Name, and Price.
           </p>
         </div>
         <p className="text-xs text-app-faint">
-          Tip: You can also click the printer icon on any individual product row to print a single 26mm barcode sticker.
+          Tip: Click the barcode icon on any individual product row to choose the exact number of copies and label size for that product.
         </p>
       </div>
     </Modal>

@@ -20,9 +20,16 @@ import {
   getReceiptHtml,
   testPrint,
   printBarcodeLabels,
-  getBarcodeLabelHtml
+  getBarcodeLabelHtml,
+  detectLabelSize,
+  testLabelPrint
 } from './devices'
-import type { PrintLabelsOptions, PrintReceiptOptions, ReceiptPaperWidth } from '../shared/types'
+import type {
+  LabelPaperSize,
+  PrintLabelsOptions,
+  PrintReceiptOptions,
+  ReceiptPaperWidth
+} from '../shared/types'
 
 function parentOf(event: Electron.IpcMainInvokeEvent): BrowserWindow {
   return BrowserWindow.fromWebContents(event.sender) as BrowserWindow
@@ -111,8 +118,16 @@ export function registerIpc(): void {
   )
   ipcMain.handle(
     'devices:getBarcodeLabelHtml',
-    (_e, productId: number, labelSize?: '25mm' | '26mm' | '26mm-narrow') =>
+    (_e, productId: number, labelSize?: LabelPaperSize | '25mm' | '26mm' | '26mm-narrow') =>
       getBarcodeLabelHtml(productId, labelSize)
+  )
+  ipcMain.handle('devices:detectLabelSize', (_e, deviceName?: string | null) =>
+    detectLabelSize(deviceName)
+  )
+  ipcMain.handle(
+    'devices:testLabelPrint',
+    (_e, deviceName?: string | null, labelSize?: LabelPaperSize) =>
+      testLabelPrint(deviceName, labelSize)
   )
 
   ipcMain.handle('customers:list', (_e, search?: string) => customersRepo.listCustomers(search))
